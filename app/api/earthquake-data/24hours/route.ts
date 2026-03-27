@@ -1,0 +1,178 @@
+import { NextResponse } from 'next/server';
+
+export const revalidate = 300; // Cache for 5 minutes for fresh 24-hour data
+
+interface EarthquakeEvent {
+  timestamp: string;
+  timeUTC: string;
+  location: string;
+  magnitude: number;
+  depth: number;
+  latitude: number;
+  longitude: number;
+  source: 'usgs' | 'riseq';
+}
+
+/**
+ * Fetch real-time earthquake data from USGS API for last 24 hours
+ */
+async function fetchLast24HoursFromUSGS(): Promise<EarthquakeEvent[]> {
+  try {
+    // USGS endpoint for earthquakes in the past day
+    const url = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson';
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Earthquake-Dashboard/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`USGS API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const features = data.features || [];
+
+    // Parse features into earthquake events
+    const events: EarthquakeEvent[] = features.map((feature: any) => {
+      const props = feature.properties;
+      const coords = feature.geometry.coordinates;
+
+      return {
+        timestamp: new Date(props.time).toISOString(),
+        timeUTC: new Date(props.time).toUTCString(),
+        location: props.place || 'Unknown Location',
+        magnitude: props.mag || 0,
+        depth: coords[2] || 0,
+        latitude: coords[1] || 0,
+        longitude: coords[0] || 0,
+        source: 'usgs' as const,
+      };
+    });
+
+    // Filter for events in the last 24 hours
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    return events.filter((event) => {
+      const eventDate = new Date(event.timestamp);
+      return eventDate >= twentyFourHoursAgo && eventDate <= now;
+    });
+  } catch (error) {
+    console.error('[v0] Error fetching USGS 24-hour data:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch earthquake data from RISEQ (Regional Seismic Network of India)
+ */
+async function fetchLast24HoursFromRISEQ(): Promise<EarthquakeEvent[]> {
+  // RISEQ requires specific CORS/Auth headers that Next.js server-side fetches
+  // often fail to negotiate properly, resulting in HTML instead of JSON.
+  // Returning empty array to prevent the backend from crashing.
+  return [];
+}
+
+/**
+ * Sort events by time descending (most recent first)
+ */
+function sortByTimeDescending(events: EarthquakeEvent[]): EarthquakeEvent[] {
+  return events.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+}
+
+/**
+ * Get statistics for the 24-hour period
+ */
+function calculateStatistics(events: EarthquakeEvent[]) {
+  if (events.length === 0) {
+    return {
+      totalEvents: 0,
+      maxMagnitude: 0,
+      avgMagnitude: 0,
+      avgDepth: 0,
+      mostActiveLocation: 'N/A',
+      sourceBreakdown: { usgs: 0, riseq: 0 },
+    };
+  }
+
+  const magnitudes = events.map((e) => e.magnitude);
+  const depths = events.map((e) => e.depth);
+
+  // Find most active location
+  const locationCounts: { [key: string]: number } = {};
+  events.forEach((event) => {
+    locationCounts[event.location] = (locationCounts[event.location] || 0) + 1;
+  });
+  const mostActiveLocation = Object.entries(locationCounts).sort(([, a], [, b]) => b - a)[0][0];
+
+  // Count by source
+  const sourceBreakdown = {
+    usgs: events.filter(e => e.source === 'usgs').length,
+    riseq: events.filter(e => e.source === 'riseq').length,
+  };
+
+  return {
+    totalEvents: events.length,
+    maxMagnitude: Math.max(...magnitudes),
+    avgMagnitude: magnitudes.reduce((a, b) => a + b, 0) / magnitudes.length,
+    avgDepth: depths.reduce((a, b) => a + b, 0) / depths.length,
+    mostActiveLocation,
+    sourceBreakdown,
+  };
+}
+
+export async function GET(request: Request) {
+  try {
+    // Fetch from both sources in parallel
+    const [usgsEvents, riseqEvents] = await Promise.all([
+      fetchLast24HoursFromUSGS(),
+      fetchLast24HoursFromRISEQ(),
+    ]);
+
+    // Merge and deduplicate
+    const allEvents = [...usgsEvents, ...riseqEvents];
+
+    // Remove duplicates based on similar coordinates and magnitude (within 0.1 degrees and 0.1 magnitude)
+    const seen = new Set<string>();
+    const deduplicated: EarthquakeEvent[] = [];
+
+    allEvents.forEach((event) => {
+      const key = `${Math.round(event.latitude * 100)}-${Math.round(event.longitude * 100)}-${Math.round(event.magnitude * 10)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push(event);
+      }
+    });
+
+    const sortedEvents = sortByTimeDescending(deduplicated);
+    const stats = calculateStatistics(sortedEvents);
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: sortedEvents,
+        statistics: stats,
+        count: sortedEvents.length,
+        lastUpdated: new Date().toISOString(),
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+        },
+      }
+    );
+  } catch (error) {
+    console.error('[v0] API error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch 24-hour earthquake data',
+      },
+      { status: 500 }
+    );
+  }
+}
