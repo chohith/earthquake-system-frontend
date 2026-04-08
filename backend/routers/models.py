@@ -19,8 +19,6 @@ async def model_status():
         "transformer": model_dir / "transformer_model.pt",
         "cnn": model_dir / "cnn_model.h5",
         "random_forest": model_dir / "random_forest_model.pkl",
-        "xgboost": model_dir / "xgboost_model.json",
-        "lightgbm": model_dir / "lightgbm_model.pkl",
     }
     
     status = {}

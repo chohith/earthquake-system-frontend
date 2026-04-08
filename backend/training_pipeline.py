@@ -11,7 +11,7 @@ import json
 from data_loader import DualSourceDataLoader
 from models import (
     LSTMModel, HybridRNNLSTMModel, TransformerModel,
-    CNNModel, RandomForestModel, XGBoostLightGBMModel
+    CNNModel, RandomForestModel
 )
 
 logger = logging.getLogger(__name__)
@@ -155,18 +155,7 @@ class TrainingPipeline:
         self.models['random_forest'] = model
         logger.info("Random Forest training completed")
     
-    def train_xgboost_lightgbm(self, data: Dict):
-        """Train XGBoost and LightGBM ensemble"""
-        logger.info("Training XGBoost and LightGBM models...")
-        model = XGBoostLightGBMModel()
-        model.train(data['X_train'], data['y_train'])
-        
-        xgb_path = self.model_dir / "xgboost_model.json"
-        lgb_path = self.model_dir / "lightgbm_model.pkl"
-        model.save(str(xgb_path), str(lgb_path))
-        
-        self.models['xgboost_lightgbm'] = model
-        logger.info("XGBoost and LightGBM training completed")
+
     
     def evaluate_all_models(self, data: Dict) -> Dict:
         """Evaluate all models on test set"""
@@ -183,9 +172,6 @@ class TrainingPipeline:
                     predictions = model.predict(X_test).flatten()
                 elif name in ['hybrid_rnn_lstm', 'transformer']:
                     predictions = model.predict(data['X_test']).flatten()
-                elif name == 'xgboost_lightgbm':
-                    pred_dict = model.predict(data['X_test'])
-                    predictions = pred_dict['ensemble']
                 else:
                     predictions = model.predict(data['X_test'])
                 
