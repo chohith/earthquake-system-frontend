@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import * as cheerio from 'cheerio';
 
+export const dynamic = 'force-dynamic';
 export const revalidate = 3600; // Cache for 1 hour
 
 interface EarthquakeEvent {
@@ -18,30 +20,19 @@ interface EarthquakeEvent {
  */
 async function fetchUSGSEarthquakeData(): Promise<EarthquakeEvent[]> {
   try {
-    // Fetch earthquakes from the past 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const url = new URL('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_month.geojson');
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        'User-Agent': 'Earthquake-Dashboard/1.0',
-      },
+    const response = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_month.geojson', {
+      headers: { 'User-Agent': 'Earthquake-Dashboard/1.0' },
+      next: { revalidate: 3600 }
     });
 
-    if (!response.ok) {
-      throw new Error(`USGS API error: ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(`USGS API error: ${response.status}`);
+    
     const data = await response.json();
     const features = data.features || [];
 
-    // Parse features into earthquake events
-    const events: EarthquakeEvent[] = features.map((feature: any) => {
+    return features.map((feature: any) => {
       const props = feature.properties;
       const coords = feature.geometry.coordinates;
-
       return {
         timestamp: new Date(props.time).toISOString(),
         timeUTC: new Date(props.time).toUTCString(),
@@ -52,16 +43,9 @@ async function fetchUSGSEarthquakeData(): Promise<EarthquakeEvent[]> {
         longitude: coords[0] || 0,
         source: 'usgs' as const,
       };
-    });
-
-    // Filter for events in 2026
-    const now = new Date();
-    const year2026Start = new Date('2026-01-01');
-    const year2026End = new Date('2026-12-31T23:59:59Z');
-
-    return events.filter((event) => {
-      const eventDate = new Date(event.timestamp);
-      return eventDate >= year2026Start && eventDate <= year2026End;
+    }).filter((event: any) => {
+      const year = new Date(event.timestamp).getFullYear();
+      return year === 2026;
     });
   } catch (error) {
     console.error('[v0] Error fetching USGS data:', error);
@@ -70,71 +54,60 @@ async function fetchUSGSEarthquakeData(): Promise<EarthquakeEvent[]> {
 }
 
 /**
- * Fetch earthquake data from RISEQ (Regional Seismic Network of India)
+ * Fetch earthquake data from RISEQ (Regional Seismic Network of India) by scraping HTML
  */
 async function fetchRISEQEarthquakeData(): Promise<EarthquakeEvent[]> {
   try {
     const response = await fetch('https://riseq.seismo.gov.in/riseq/earthquake', {
-      headers: {
-        'User-Agent': 'Earthquake-Dashboard/1.0',
-      },
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      next: { revalidate: 0 }
     });
 
-    if (!response.ok) {
-      throw new Error(`RISEQ API error: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`RISEQ HTTP error: ${response.status}`);
+    
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const events: EarthquakeEvent[] = [];
 
-    const data = await response.json();
-    let events: EarthquakeEvent[] = [];
+    $('li.event_list').each((_, el) => {
+      try {
+        const jsonStr = $(el).attr('data-json');
+        if (jsonStr) {
+          const data = JSON.parse(jsonStr);
+          const coords = data.lat_long ? data.lat_long.split(',').map((s: string) => parseFloat(s.trim())) : [0, 0];
+          
+          let mag = 0; let depth = 0;
+          if (data.magnitude_depth) {
+             const mMatch = data.magnitude_depth.match(/M:\s*([\d.]+)/);
+             if (mMatch) mag = parseFloat(mMatch[1]);
+             const dMatch = data.magnitude_depth.match(/D:\s*([\d.]+)km/);
+             if (dMatch) depth = parseFloat(dMatch[1]);
+          }
 
-    // Parse RISEQ data format - supports multiple formats
-    if (Array.isArray(data)) {
-      events = data.map((item: any) => ({
-        timestamp: item.origintime ? new Date(item.origintime).toISOString() : new Date().toISOString(),
-        timeUTC: item.origintime ? new Date(item.origintime).toUTCString() : new Date().toUTCString(),
-        location: item.location || item.place || item.region || 'Unknown Location',
-        magnitude: item.magnitude || item.mag || 0,
-        depth: item.depth || 0,
-        latitude: item.latitude || item.lat || 0,
-        longitude: item.longitude || item.lon || item.lng || 0,
-        source: 'riseq' as const,
-      }));
-    } else if (data.features && Array.isArray(data.features)) {
-      events = data.features.map((feature: any) => {
-        const coords = feature.geometry?.coordinates || [0, 0, 0];
-        const props = feature.properties || {};
-        return {
-          timestamp: props.origintime ? new Date(props.origintime).toISOString() : new Date().toISOString(),
-          timeUTC: props.origintime ? new Date(props.origintime).toUTCString() : new Date().toUTCString(),
-          location: props.location || props.place || props.region || 'Unknown Location',
-          magnitude: props.magnitude || props.mag || 0,
-          depth: coords[2] || props.depth || 0,
-          latitude: coords[1] || 0,
-          longitude: coords[0] || 0,
-          source: 'riseq' as const,
-        };
-      });
-    } else if (data.data && Array.isArray(data.data)) {
-      events = data.data.map((item: any) => ({
-        timestamp: item.origintime ? new Date(item.origintime).toISOString() : new Date().toISOString(),
-        timeUTC: item.origintime ? new Date(item.origintime).toUTCString() : new Date().toUTCString(),
-        location: item.location || item.place || item.region || 'Unknown Location',
-        magnitude: item.magnitude || item.mag || 0,
-        depth: item.depth || 0,
-        latitude: item.latitude || item.lat || 0,
-        longitude: item.longitude || item.lon || item.lng || 0,
-        source: 'riseq' as const,
-      }));
-    }
+          let timeVal = new Date().toISOString();
+          if (data.origin_time) {
+             const cleanDateStr = data.origin_time.replace(' IST', '').replace(/-/g, '/');
+             const localMillis = new Date(cleanDateStr).getTime();
+             if (!isNaN(localMillis)) {
+                timeVal = new Date(localMillis - (5.5 * 60 * 60 * 1000)).toISOString();
+             }
+          }
 
-    // Filter for events in 2026
-    const year2026Start = new Date('2026-01-01');
-    const year2026End = new Date('2026-12-31T23:59:59Z');
-
-    return events.filter((event) => {
-      const eventDate = new Date(event.timestamp);
-      return eventDate >= year2026Start && eventDate <= year2026End;
+          events.push({
+            timestamp: timeVal,
+            timeUTC: new Date(timeVal).toUTCString(),
+            location: data.event_name ? data.event_name.replace(/M:\s*[\d.]+\s*-\s*/, '') : 'Unknown Region',
+            magnitude: mag,
+            depth: depth,
+            latitude: coords[0] || 0,
+            longitude: coords[1] || 0,
+            source: 'riseq',
+          });
+        }
+      } catch (e) {}
     });
+
+    return events.filter(e => new Date(e.timestamp).getFullYear() === 2026);
   } catch (error) {
     console.error('[v0] Error fetching RISEQ data:', error);
     return [];
@@ -149,7 +122,6 @@ function aggregateByDate(events: EarthquakeEvent[]) {
 
   events.forEach((event) => {
     const dateKey = event.timestamp.split('T')[0];
-
     if (!aggregated[dateKey]) {
       aggregated[dateKey] = {
         date: dateKey,
@@ -171,25 +143,18 @@ function aggregateByDate(events: EarthquakeEvent[]) {
   });
 
   return Object.values(aggregated)
-    .map((item: any) => ({
-      ...item,
-      sources: Array.from(item.sources),
-    }))
+    .map((item: any) => ({ ...item, sources: Array.from(item.sources) }))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    // Fetch from both sources in parallel
     const [usgsEvents, riseqEvents] = await Promise.all([
       fetchUSGSEarthquakeData(),
       fetchRISEQEarthquakeData(),
     ]);
 
-    // Merge and deduplicate
     const allEvents = [...usgsEvents, ...riseqEvents];
-    
-    // Remove duplicates based on similar coordinates and magnitude
     const seen = new Set<string>();
     const deduplicated: EarthquakeEvent[] = [];
 
@@ -203,28 +168,14 @@ export async function GET(request: Request) {
 
     const aggregatedData = aggregateByDate(deduplicated);
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: aggregatedData,
-        count: aggregatedData.length,
-        lastUpdated: new Date().toISOString(),
-        sources: ['usgs', 'riseq'],
-      },
-      {
-        headers: {
-          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
-        },
-      }
-    );
+    return NextResponse.json({
+      success: true,
+      data: aggregatedData,
+      count: aggregatedData.length,
+      lastUpdated: new Date().toISOString(),
+      sources: ['usgs', 'riseq'],
+    });
   } catch (error) {
-    console.error('[v0] API error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch earthquake data',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to fetch earthquake data' }, { status: 500 });
   }
 }
