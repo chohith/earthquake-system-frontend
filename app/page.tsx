@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { GlobalNavigation } from "@/components/global-navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { ChatbotWidget } from "@/components/chatbot-widget"
@@ -21,7 +21,9 @@ export default function HomePage() {
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
       <GlobalNavigation />
       <div className="w-full">
-        <DashboardLayout selectedLocation={selectedLocation} onLocationSelect={setSelectedLocation} />
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-white">Loading Dashboard...</div>}>
+          <DashboardLayout selectedLocation={selectedLocation} onLocationSelect={setSelectedLocation} />
+        </Suspense>
       </div>
       <ChatbotWidget />
     </main>
