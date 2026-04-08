@@ -6,7 +6,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { MapPin, BarChart3, AlertTriangle, Menu, X, Activity } from "lucide-react"
 import { useState } from "react"
-import { AdvancedSearch } from "@/components/advanced-search"
+import { useTranslation } from "react-i18next"
 
 interface NavItem {
   label: string
@@ -19,27 +19,29 @@ export function GlobalNavigation() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  const { t, i18n } = useTranslation()
+
   const navItems: NavItem[] = [
     {
-      label: "Live Monitoring",
+      label: t('nav.liveMonitoring'),
       href: "/",
       icon: <MapPin className="w-4 h-4" />,
       description: "Real-time earthquake tracking",
     },
     {
-      label: "Analytics Dashboard",
+      label: t('nav.analyticsDashboard'),
       href: "/analytics",
       icon: <BarChart3 className="w-4 h-4" />,
       description: "Historical analysis",
     },
     {
-      label: "Emergency & Preparedness",
+      label: t('nav.emergencyPreparedness'),
       href: "/emergency",
       icon: <AlertTriangle className="w-4 h-4" />,
       description: "Safety guidance",
     },
     {
-      label: "Data Lab & History",
+      label: t('nav.dataLabHistory'),
       href: "/lab",
       icon: <Activity className="w-4 h-4" />,
       description: "Live Seismographs & Historical Globe",
@@ -61,11 +63,6 @@ export function GlobalNavigation() {
               </div>
               <span className="font-bold text-white hidden sm:inline">SeismoAI</span>
             </Link>
-
-            {/* Search Bar - Desktop */}
-            <div className="hidden lg:flex flex-1 max-w-md">
-              <AdvancedSearch />
-            </div>
 
             {/* Navigation Links - Desktop */}
             <div className="hidden lg:flex gap-1">
@@ -97,9 +94,6 @@ export function GlobalNavigation() {
           {mobileMenuOpen && (
             <div className="lg:hidden bg-slate-800 border-b border-cyan-500/20">
               <div className="p-4 space-y-3">
-                <div className="mb-4">
-                  <AdvancedSearch />
-                </div>
                 {navItems.map((item) => (
                   <Link
                     key={item.href}

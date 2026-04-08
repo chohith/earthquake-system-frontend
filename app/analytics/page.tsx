@@ -6,6 +6,7 @@ import { useState } from "react"
 import { AnalyticsGraphs } from "@/components/analytics-graphs"
 import { RealtimeRiskIndex } from "@/components/realtime-risk-index"
 import { RealtimeForecastExplorer } from "@/components/realtime-forecast-explorer"
+import { Translate } from "@/components/translate"
 
 export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState("risk")
@@ -18,19 +19,19 @@ export default function AnalyticsPage() {
       <div className="w-full">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="mb-6">
-            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Analytics & Insights</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2"><Translate>Analytics & Insights</Translate></h1>
             <p className="text-slate-400 text-sm sm:text-base">
-              Real-time monitoring powered by custom Deep Learning (LSTM, CNN, ANN)
+              <Translate>Real-time monitoring powered by custom Deep Learning</Translate>
             </p>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2 gap-2 bg-slate-800/50 p-1 h-auto mb-6">
               <TabsTrigger value="risk" className="text-xs sm:text-sm">
-                Real-Time Risk Index
+                <Translate>Real-Time Risk Index</Translate>
               </TabsTrigger>
               <TabsTrigger value="forecast" className="text-xs sm:text-sm">
-                Live Regional Prediction
+                <Translate>Live Regional Prediction</Translate>
               </TabsTrigger>
             </TabsList>
 

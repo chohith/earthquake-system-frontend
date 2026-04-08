@@ -1,11 +1,12 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Inter, Outfit } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { I18nProvider } from "./i18n-provider"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
+const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" })
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -16,9 +17,9 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: "SeismoAI - Real-Time Seismic Monitoring & Response",
+  title: "Earthquake Forecaster | Real-Time AI Predictions & Analytics",
   description:
-    "AI-driven spatiotemporal analysis of seismic activity with real-time monitoring, risk assessment, and emergency response management.",
+    "Next-generation AI-driven spatiotemporal seismic forecasting. Monitor live seismic activity, assess automated risk factors, and access real-time localized alerting zones.",
   icons: {
     icon: [
       {
@@ -50,8 +51,10 @@ export default function RootLayout({
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="theme-color" content="#0f172a" />
       </head>
-      <body className={`font-sans antialiased`}>
-        {children}
+      <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`}>
+        <I18nProvider>
+          {children}
+        </I18nProvider>
         <Analytics />
       </body>
     </html>

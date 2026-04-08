@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Send, Bot, User, X, Mic, Volume2, MapPin, Download, Plus, Search, ChevronDown } from "lucide-react"
+import { Send, Bot, User, X, Mic, Volume2, MapPin, Download, Plus } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface Message {
@@ -29,19 +30,6 @@ const LANGUAGES = {
 
 type LanguageCode = keyof typeof LANGUAGES
 
-const GREETINGS: Record<LanguageCode, string> = {
-  en: "Hello! I'm your Seismic Assistant. You can ask me 'How does this website work?' to get a quick tour, or ask about global earthquakes and safety!",
-  ta: "வணக்கம்! நான் உங்கள் நிலநடுக்க பாதுகாப்பு உதவியாளர். நான் உங்களுக்கு எப்படி உதவ முடியும்?",
-  hi: "नमस्ते! मैं आपका भूकंप सुरक्षा सहायक हूं। मैं आपकी कैसे मदद कर सकता हूं?",
-  sa: "नमस्ते! अहम् भूकम्पन सुरक्षा सहायक अस्मि। अहं भवन्तं कथम् सहायितुम् शक्नोमि?",
-  es: "¡Hola! Soy tu asistente de seguridad ante terremotos. ¿Cómo puedo ayudarte?",
-  fr: "Bonjour! Je suis votre assistant en matière de sécurité lors des tremblements de terre. Comment puis-je vous aider?",
-  ar: "مرحبا! أنا مساعدك في سلامة الزلازل. كيف يمكنني مساعدتك؟",
-  pt: "Olá! Sou seu assistente de segurança durante terremotos. Como posso ajudá-lo?",
-  ru: "Привет! Я ваш помощник по безопасности при землетрясениях. Как я могу вам помочь?",
-  id: "Halo! Saya adalah asisten keselamatan gempa bumi Anda. Bagaimana saya dapat membantu Anda?",
-}
-
 export function ChatbotWidget() {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -50,10 +38,13 @@ export function ChatbotWidget() {
   const [language, setLanguage] = useState<LanguageCode>("en")
   const [isListening, setIsListening] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const [searchLocation, setSearchLocation] = useState("")
   const [showNearbySearch, setShowNearbySearch] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<any>(null)
+  const { t, i18n } = useTranslation()
+
+  // Sync internal speech recognition language with global i18n
+  const currentLangCode = LANGUAGES[i18n.language as LanguageCode]?.code || "en-US";
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -81,12 +72,12 @@ export function ChatbotWidget() {
         {
           id: "1",
           role: "assistant",
-          content: GREETINGS[language],
+          content: t("chatbot.greet"),
           timestamp: new Date(),
         },
       ])
     }
-  }, [isOpen, language])
+  }, [isOpen, t])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -96,7 +87,7 @@ export function ChatbotWidget() {
 
   const handleVoiceInput = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.lang = LANGUAGES[language].code
+      recognitionRef.current.lang = currentLangCode
       recognitionRef.current.start()
     }
   }
@@ -155,63 +146,79 @@ export function ChatbotWidget() {
     )
   }
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (!input.trim()) return
 
-    const userMessage: Message = {
+    const newMessage: Message = {
       id: String(Date.now()),
       role: "user",
       content: input,
       timestamp: new Date(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    setMessages((prev) => [...prev, newMessage])
     setInput("")
     setIsTyping(true)
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: input,
-          language: language,
-          conversationHistory: messages,
-        }),
-      })
-
-      if (!response.ok) throw new Error("Chat request failed")
-
-      const data = await response.json()
-      const assistantMessage: Message = {
-        id: String(Date.now() + 1),
-        role: "assistant",
-        content: data.message || data.response || "No response received",
-        timestamp: new Date(),
+    // Check for local QA matches before calling backend
+    const lowerInput = input.toLowerCase()
+    
+    // Quick QA Logic
+    setTimeout(async () => {
+      let replyContent = ""
+      if (lowerInput.includes("website") || lowerInput.includes("how does this work") || lowerInput.includes("what is this")) {
+        replyContent = "This is the SeismoAI Platform! We provide Live Monitoring, an Analytics Dashboard, and Emergency Preparedness tools. We actively pool telemetry from the USGS and the Indian National Center for Seismology to give you real-time 3D mappings."
+      } else if (lowerInput.includes("india") || lowerInput.includes("riseq") || lowerInput.includes("live") || lowerInput.includes("delhi") || lowerInput.includes("recent")) {
+        try {
+           const response = await fetch('/api/india-earthquakes');
+           if (!response.ok) throw new Error("API Route Blocked");
+           const data = await response.json();
+           const recentInd = data.features?.slice(0, 3) || [];
+           if (recentInd.length > 0) {
+              replyContent = "I am actively monitoring the Indian region! Here are the latest pinpointed events fetched directly from our telemetry grids without needing external links:\n\n" + 
+                 recentInd.map((f:any, i:number) => `🔹 M${f.properties.mag} — ${f.properties.place} (Depth: ${f.properties.depth}km)`).join('\n');
+           } else {
+              replyContent = "I am actively monitoring the Indian region! Currently, no significant events have been pinpointed in the local database.";
+           }
+        } catch (e) {
+           replyContent = "I attempted to actively fetch the latest Indian events, but encountered a slight network hiccup. You can view them actively rendering on the globe!";
+        }
+      } else if (lowerInput.includes("who made this") || lowerInput.includes("author") || lowerInput.includes("developer")) {
+        replyContent = "This platform was built as part of an Advanced AI-Driven Seismic Analysis Project."
+      } else if (lowerInput.includes("predict") || lowerInput.includes("future")) {
+        replyContent = "Our AI models calculate regional risk indices and output probabilistic forecasting up to 7-14 days. You can explore these metrics in the Data Lab & History module."
+      } else {
+        try {
+           const answerRes = await fetch('/api/chat', { 
+              method: 'POST', 
+              headers: { 'Content-Type': 'application/json' }, 
+              body: JSON.stringify({ query: input, language: i18n.language }) 
+           });
+           const answerData = await answerRes.json();
+           replyContent = answerData.answer;
+        } catch {
+           replyContent = "I am a bit overloaded right now and cannot reach my external knowledge base. If there is an emergency, please use the location sharing capability!";
+        }
       }
 
-      setMessages((prev) => [...prev, assistantMessage])
-    } catch (error) {
-      console.error("[v0] Chat error:", error)
       setMessages((prev) => [
         ...prev,
         {
-          id: String(Date.now()),
+          id: String(Date.now() + 1),
           role: "assistant",
-          content: "Sorry, I encountered an error processing your request. Please try again.",
+          content: replyContent,
           timestamp: new Date(),
         },
       ])
-    } finally {
       setIsTyping(false)
-    }
+    }, 500)
   }
 
   const handleTextToSpeech = (text: string) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = LANGUAGES[language].code
+      utterance.lang = currentLangCode
       utterance.onstart = () => setIsSpeaking(true)
       utterance.onend = () => setIsSpeaking(false)
       window.speechSynthesis.speak(utterance)
@@ -242,7 +249,7 @@ export function ChatbotWidget() {
         {
           id: String(Date.now()),
           role: "assistant",
-          content: "Excel report downloaded successfully! It contains 3 sheets:\n1. Historical Data - Past earthquakes\n2. 2026 Live Data - Current year activity\n3. 24-Hour Activity - Last 24 hours of earthquakes",
+          content: "Excel report downloaded successfully!",
           timestamp: new Date(),
         },
       ])
@@ -260,12 +267,6 @@ export function ChatbotWidget() {
     }
   }
 
-  const handleNearbySearch = (location: string) => {
-    setSearchLocation(location)
-    setInput(`Tell me about recent earthquakes near ${location}`)
-    setShowNearbySearch(false)
-  }
-
   return (
     <div className="fixed bottom-4 right-4 z-50">
       {!isOpen ? (
@@ -281,20 +282,20 @@ export function ChatbotWidget() {
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <Bot className="w-5 h-5 text-cyan-400" />
-                Seismic Assistant
+                {t("chatbot.title")}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
             <div className="mt-3">
-              <Select value={language} onValueChange={(value) => setLanguage(value as LanguageCode)}>
-                <SelectTrigger className="w-full bg-slate-700/50 border-cyan-500/30 text-slate-200">
+              <Select value={i18n.language} onValueChange={(value) => i18n.changeLanguage(value)}>
+                <SelectTrigger className="w-full bg-slate-700/50 border-cyan-500/30 text-slate-200 cursor-pointer">
                   <SelectValue placeholder="Select Language" />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-800 border-cyan-500/30">
                   {Object.entries(LANGUAGES).map(([code, { name }]) => (
-                    <SelectItem key={code} value={code}>
+                    <SelectItem key={code} value={code} className="cursor-pointer">
                       {name}
                     </SelectItem>
                   ))}
@@ -396,7 +397,7 @@ export function ChatbotWidget() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                placeholder="Ask about earthquakes, safety, or shelters..."
+                placeholder={t("chatbot.placeholder")}
                 className="flex-1 bg-slate-700/50 border-cyan-500/30 text-white placeholder-slate-400"
               />
               <Button

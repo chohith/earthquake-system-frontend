@@ -34,7 +34,7 @@ export function GlobalVisualizationZone({
           <h3 className="text-lg font-semibold text-white">Global Seismic Activity</h3>
           <p className="text-xs text-slate-400">Real-time monitoring - 3D Interactive Globe</p>
         </div>
-        <GlobeSection />
+        <GlobeSection searchRegion={searchRegion} />
       </div>
     </Card>
   )

@@ -27,8 +27,52 @@ def main():
     print("----------------------------------------------------")
     
     data_path = r"c:\Users\Chohith\Downloads\earthquake_dataset.csv"
-    df = pd.read_csv(data_path)
+    if os.path.exists(data_path):
+        df = pd.read_csv(data_path)
+    else:
+        print("Original global historical dataset missing locally, synthesizing from cached query.csv...")
+        fallback_path = r"c:\Users\Chohith\Downloads\query.csv"
+        df_raw = pd.read_csv(fallback_path)
+        df_raw['time'] = pd.to_datetime(df_raw['time'], errors='coerce')
+        df = pd.DataFrame({
+            'Date': df_raw['time'].dt.strftime('%Y-%m-%d'),
+            'Time (UTC)': df_raw['time'].dt.strftime('%H:%M:%S'),
+            'Country': df_raw['place'].apply(lambda x: str(x).split(',')[-1].strip() if pd.notna(x) else 'Unknown'),
+            'Earthquake Magnitude': df_raw['mag'],
+            'Latitude': df_raw['latitude'],
+            'Longitude': df_raw['longitude'],
+            'Depth (km)': df_raw['depth']
+        })
     
+    print("Integrating localized high-resolution Indian Dataset (2015-2025)...")
+    india_path = r"d:\computer ji\backend\India_Earthquakes.csv\Earthquakes.csv"
+    if os.path.exists(india_path):
+        df_india_raw = pd.read_csv(india_path)
+        # Parse datetime
+        df_india_raw['time'] = pd.to_datetime(df_india_raw['time'], errors='coerce')
+        # Filter for 2015 - 2025
+        df_india = df_india_raw[(df_india_raw['time'].dt.year >= 2015) & (df_india_raw['time'].dt.year <= 2025)].copy()
+        
+        # Normalize columns mapped perfectly to USGS Global Format to maintain identical arrays!
+        df_india['Date'] = df_india['time'].dt.strftime('%Y-%m-%d')
+        df_india['Time (UTC)'] = df_india['time'].dt.strftime('%H:%M:%S')
+        df_india['Latitude'] = df_india['latitude']
+        df_india['Longitude'] = df_india['longitude']
+        df_india['Depth (km)'] = df_india['depth']
+        df_india['Earthquake Magnitude'] = df_india['mag']
+        df_india['Country'] = 'India'  # Ensure unified identity display!
+        
+        # Handle Missing Values mathematically (Simulating RISEQ chronological baseline)
+        df_india = df_india.sort_values('time')
+        norm_cols = ['Latitude', 'Longitude', 'Depth (km)', 'Earthquake Magnitude']
+        df_india[norm_cols] = df_india[norm_cols].interpolate(method='linear').bfill().ffill()
+        
+        # Keep corresponding columns and append invisibly to global dataset!
+        align_cols = ['Date', 'Time (UTC)', 'Latitude', 'Longitude', 'Depth (km)', 'Earthquake Magnitude', 'Country']
+        df_india = df_india[align_cols]
+        df = pd.concat([df, df_india], ignore_index=True)
+        print(f"Successfully integrated {len(df_india)} Indian records into global mapping!")
+        
     # Preprocess Datetime
     # Clean time strings (some might have weird formats, but we assume "YYYY-MM-DD" and "HH:MM:SS")
     df['Datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time (UTC)'], errors='coerce')

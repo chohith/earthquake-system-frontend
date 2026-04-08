@@ -65,14 +65,89 @@ async function fetchLast24HoursFromUSGS(): Promise<EarthquakeEvent[]> {
   }
 }
 
+import * as cheerio from 'cheerio';
+
 /**
  * Fetch earthquake data from RISEQ (Regional Seismic Network of India)
  */
 async function fetchLast24HoursFromRISEQ(): Promise<EarthquakeEvent[]> {
-  // RISEQ requires specific CORS/Auth headers that Next.js server-side fetches
-  // often fail to negotiate properly, resulting in HTML instead of JSON.
-  // Returning empty array to prevent the backend from crashing.
-  return [];
+  try {
+    const url = 'https://riseq.seismo.gov.in/riseq/earthquake';
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`RISEQ fetch failed: ${response.status}`);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    const events: EarthquakeEvent[] = [];
+
+    $('li.event_list').each((_, el) => {
+      try {
+        const jsonStr = $(el).attr('data-json');
+        if (jsonStr) {
+          const data = JSON.parse(jsonStr);
+          // Coordinates format "26.522, 96.467"
+          const coords = data.lat_long ? data.lat_long.split(',').map((s: string) => parseFloat(s.trim())) : [0, 0];
+          
+          // Mag Format: "M: 3.6 , D: 80km"
+          let mag = 0;
+          let depth = 0;
+          if (data.magnitude_depth) {
+             const mMatch = data.magnitude_depth.match(/M:\s*([\d.]+)/);
+             if (mMatch) mag = parseFloat(mMatch[1]);
+             const dMatch = data.magnitude_depth.match(/D:\s*([\d.]+)km/);
+             if (dMatch) depth = parseFloat(dMatch[1]);
+          }
+
+          // Parse origin time to UTC timestamp "2026-04-06 08:35:32 IST"
+          let timeVal = new Date().toISOString();
+          let timeUTC = new Date().toUTCString();
+          if (data.origin_time) {
+             const cleanDateStr = data.origin_time.replace(' IST', '').replace(/-/g, '/');
+             // IST is GMT+5:30. Let's just create a basic JS Date as an approximation since Date.parse might struggle with IST.
+             // Subtract 5.5 hours to get UTC
+             const localMillis = new Date(cleanDateStr).getTime();
+             const utcMillis = localMillis - (5.5 * 60 * 60 * 1000);
+             timeVal = new Date(utcMillis).toISOString();
+             timeUTC = new Date(utcMillis).toUTCString();
+          }
+
+          let place = data.event_name ? data.event_name.replace(/M:\s*[\d.]+\s*-\s*/, '') : 'Unknown Region (India)';
+
+          events.push({
+            timestamp: timeVal,
+            timeUTC: timeUTC,
+            location: place,
+            magnitude: mag,
+            depth: depth,
+            latitude: coords[0] || 0,
+            longitude: coords[1] || 0,
+            source: 'riseq',
+          });
+        }
+      } catch (err) {
+        // Skip errors in individual row parsing
+      }
+    });
+
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    // Reverse events and filter within 24h
+    return events.filter(e => {
+        const d = new Date(e.timestamp);
+        return d >= twentyFourHoursAgo && d <= now;
+    });
+  } catch (error) {
+    console.error('[v0] Error fetching RISEQ data:', error);
+    return [];
+  }
 }
 
 /**

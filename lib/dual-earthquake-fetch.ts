@@ -64,10 +64,35 @@ async function fetchFromUSGS(timeRange: string = 'week'): Promise<EarthquakeData
  * API: https://riseq.seismo.gov.in/riseq/earthquake
  */
 async function fetchFromRISEQ(): Promise<EarthquakeData[]> {
-  // RISEQ often blocks client-side browsers due to strict CORS rules. 
-  // We bypass direct browser fetching here to prevent V0 React crashes.
-  // Our Python ML Backend handles RISEQ securely server-side.
-  return [];
+  try {
+    const response = await fetch('/api/india-earthquakes', {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    })
+
+    if (!response.ok) throw new Error(`RISEQ API HTTP ${response.status}`)
+    const data = await response.json()
+
+    return (data.features || []).map((feature: any) => {
+      const { geometry, properties, id } = feature
+      const [lng, lat, depth] = geometry?.coordinates || [0, 0, 0]
+      return {
+        id: id || `imd-${Date.now()}-${Math.random()}`,
+        lat,
+        lng,
+        mag: properties?.mag || 0,
+        place: properties?.place || 'Unknown Indian Region',
+        time: new Date(properties.time).toLocaleString(),
+        depth: depth || 0,
+        timestamp: properties?.time || Date.now(),
+        source: 'riseq' as const,
+      }
+    })
+  } catch (error) {
+    console.error('[dual-earthquake-fetch] RISEQ fetch error:', error)
+    return []
+  }
 }
 
 /**

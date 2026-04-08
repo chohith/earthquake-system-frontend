@@ -60,11 +60,13 @@ export function RealtimeForecastExplorer({ selectedRegion: _selectedRegion }: { 
   }, [])
 
   // Format chart data
-  const chartData = data?.recent_events_sample.map((event) => ({
-    time: new Date(event.time).toLocaleDateString() + " " + new Date(event.time).getHours() + ":00",
-    magnitude: event.magnitude,
-    depth: event.depth,
-  })).reverse() || []
+  const chartData = data?.recent_events_sample
+    .filter((event) => event.magnitude >= 0 && event.magnitude <= 10)
+    .map((event) => ({
+      time: new Date(event.time).toLocaleDateString() + " " + new Date(event.time).getHours() + ":00",
+      magnitude: event.magnitude,
+      depth: event.depth,
+    })).reverse() || []
 
   return (
     <div className="space-y-6">
@@ -81,6 +83,7 @@ export function RealtimeForecastExplorer({ selectedRegion: _selectedRegion }: { 
                   <SelectValue placeholder="Select a region" />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-800 border-slate-700 text-white max-h-60">
+                  <SelectItem value="india">India</SelectItem>
                   <SelectItem value="japan">Japan</SelectItem>
                   <SelectItem value="california">California, USA</SelectItem>
                   <SelectItem value="mexico">Mexico</SelectItem>
@@ -193,7 +196,7 @@ export function RealtimeForecastExplorer({ selectedRegion: _selectedRegion }: { 
                       tickFormatter={(value) => value.split(" ")[0]}
                     />
                     <YAxis
-                      domain={['dataMin - 1', 'dataMax + 1']}
+                      domain={[0, 10]}
                       stroke="#94a3b8"
                       fontSize={12}
                     />

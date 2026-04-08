@@ -70,11 +70,11 @@ export function PredictionExplorer() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="india">India (Full Territory)</SelectItem>
+                <SelectItem value="Himalayas">Himalayan Region</SelectItem>
                 <SelectItem value="Japan Trench">Japan Trench</SelectItem>
                 <SelectItem value="San Andreas">San Andreas Fault</SelectItem>
-                <SelectItem value="Himalayas">Himalayas</SelectItem>
                 <SelectItem value="Ring of Fire">Ring of Fire</SelectItem>
-                <SelectItem value="Mid-Atlantic">Mid-Atlantic Ridge</SelectItem>
               </SelectContent>
             </Select>
           </div>

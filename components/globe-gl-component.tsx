@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { useTranslation } from "react-i18next"
 
 interface EarthquakeData {
   id: string
@@ -14,19 +15,29 @@ interface EarthquakeData {
 
 interface GlobeGLComponentProps {
   earthquakes: EarthquakeData[]
+  showIndiaLayer?: boolean
+  searchRegion?: string
   onSelectQuake: (quake: EarthquakeData) => void
 }
 
 const getMagnitudeColor = (magnitude: number): string => {
-  if (magnitude >= 6) return '#ef4444'
-  if (magnitude >= 5) return '#f97316'
-  if (magnitude >= 4) return '#eab308'
-  return '#22c55e'
+  if (magnitude >= 6) return '#D50000' // Red
+  if (magnitude >= 5) return '#FF6D00' // Orange
+  if (magnitude >= 3) return '#FFD600' // Yellow
+  return '#00C853' // Green
 }
 
-export function GlobeGLComponent({ earthquakes, onSelectQuake }: GlobeGLComponentProps) {
+const getRadiusSize = (magnitude: number): number => {
+  if (magnitude >= 6) return 2.5
+  if (magnitude >= 5) return 1.2
+  if (magnitude >= 3) return 0.6
+  return 0.3
+}
+
+export function GlobeGLComponent({ earthquakes, showIndiaLayer = true, searchRegion = "", onSelectQuake }: GlobeGLComponentProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const globeRef = useRef<any>(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -42,6 +53,7 @@ export function GlobeGLComponent({ earthquakes, onSelectQuake }: GlobeGLComponen
         containerRef.current.innerHTML = ''
 
         // Create globe instance passing container directly
+        // @ts-ignore
         const globe = GlobeGL()(containerRef.current)
           .globeImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg')
           .bumpImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png')
@@ -55,7 +67,7 @@ export function GlobeGLComponent({ earthquakes, onSelectQuake }: GlobeGLComponen
         const pointsData = earthquakes.map((quake) => ({
           lat: quake.lat,
           lng: quake.lng,
-          size: Math.min(quake.mag * 1.5, 6),
+          size: getRadiusSize(quake.mag),
           color: getMagnitudeColor(quake.mag),
           quake: quake,
         }))
@@ -68,15 +80,60 @@ export function GlobeGLComponent({ earthquakes, onSelectQuake }: GlobeGLComponen
             globe.pointsData(pointsData)
             globe.pointColor((d: any) => d.color)
             globe.pointAltitude(0.01)
+            globe.pointLabel((d: any) => `
+              <div style="background: rgba(15, 23, 42, 0.95); padding: 10px; border-radius: 6px; border: 1px solid #06b6d4; font-family: sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.5);" dir="auto">
+                <div style="font-weight: bold; color: white; display: flex; align-items: center; gap: 8px;">
+                   <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${d.color}"></span>
+                   M${d.quake.mag.toFixed(1)} - ${d.quake.place}
+                </div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-top: 6px;">${t('recent.depth')}: ${d.quake.depth} km</div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-top: 2px;">Time: ${new Date(d.quake.time).toLocaleString()}</div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-top: 2px;">${t('recent.sourcePrefix').split(':')[0] || 'Source'}: <strong style="color: ${d.quake.id?.startsWith('imd') ? '#ff9933' : '#a78bfa'}">${d.quake.id?.startsWith('imd') ? 'India (IMD)' : 'USGS Database'}</strong></div>
+              </div>
+            `)
             globe.onPointClick((d: any) => {
               if (d && d.quake) {
                 onSelectQuake(d.quake)
+                
+                // Fly to point
+                globe.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.8 }, 1000);
+                
+                // Pause rotation interactively
+                if (globe.controls()) {
+                   globe.controls().autoRotate = false;
+                   setTimeout(() => { if (globeRef.current && globeRef.current.controls()) globeRef.current.controls().autoRotate = true; }, 10000);
+                }
               }
             })
+            
+            // Auto-rotate disabled by request
+            if (globe.controls()) {
+              globe.controls().autoRotate = false;
+            }
+            
             console.log('[v0] Points added successfully')
           } catch (err) {
             console.error('[v0] Error adding points:', err)
           }
+        }
+        
+        // India Saffron Ripple Rings Layer
+        if (showIndiaLayer) {
+           const indianQuakes = earthquakes.filter(q => q.id && q.id.startsWith('imd'));
+           const ringsData = indianQuakes.map(quake => ({
+             lat: quake.lat,
+             lng: quake.lng,
+             maxR: Math.max(0.3, quake.mag * 0.3), // Substantially reduced size for clarity!
+             propagationSpeed: 0.8, // Slower calmer ripple
+             repeatPeriod: 1500 // More spacing between ripples
+           }));
+           globe.ringsData(ringsData)
+             .ringColor(() => 'rgba(255, 153, 51, 0.7)') // Slightly transparent Saffron Color
+             .ringMaxRadius('maxR')
+             .ringPropagationSpeed('propagationSpeed')
+             .ringRepeatPeriod('repeatPeriod')
+        } else {
+           globe.ringsData([])
         }
 
         // Add simple label overlays using a separate container
@@ -165,7 +222,28 @@ export function GlobeGLComponent({ earthquakes, onSelectQuake }: GlobeGLComponen
         globeRef.current = null
       }
     }
-  }, [earthquakes, onSelectQuake])
+  }, [earthquakes, onSelectQuake, t, showIndiaLayer])
+
+  // Programmatically pan & zoom whenever the selected country dropdown updates!
+  useEffect(() => {
+    if (searchRegion && earthquakes.length > 0 && globeRef.current) {
+      const cFilter = searchRegion.toLowerCase().trim();
+      const targetedQuakes = earthquakes.filter(eq => {
+        const countryExt = eq.place.split(',').pop()?.trim().toLowerCase() || "";
+        return countryExt.includes(cFilter) || eq.place.toLowerCase().includes(cFilter);
+      });
+      
+      if (targetedQuakes.length > 0) {
+        // Stop default rolling 
+        if (globeRef.current.controls()) {
+           globeRef.current.controls().autoRotate = false;
+        }
+        // Jump smoothly to the largest quake in that territory
+        const primaryTarget = targetedQuakes.reduce((max, current) => max.mag > current.mag ? max : current, targetedQuakes[0]);
+        globeRef.current.pointOfView({ lat: primaryTarget.lat, lng: primaryTarget.lng, altitude: 1.2 }, 1500);
+      }
+    }
+  }, [searchRegion, earthquakes])
 
   return (
     <div

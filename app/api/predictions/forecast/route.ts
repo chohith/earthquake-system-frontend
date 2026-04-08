@@ -12,11 +12,11 @@ interface PredictionRequest {
 
 // Sample region definitions (lat, lng bounds)
 const REGIONS: Record<string, [number, number, number, number]> = {
+  india: [8.4, 37.6, 68.7, 97.2],
   "Japan Trench": [30, 45, 130, 145],
   "San Andreas": [32, 43, -125, -113],
   Himalayas: [25, 35, 75, 95],
-  "Ring of Fire": [-60, 60, -180, 180],
-  "Mid-Atlantic": [0, 80, -50, -20],
+  "Ring of Fire": [-60, 60, -180, 180]
 }
 
 export async function POST(request: NextRequest) {

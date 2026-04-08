@@ -61,10 +61,53 @@ class DualSourceDataLoader:
         return []
     
     async def fetch_riseq_data(self) -> List[Dict]:
-        """Fetch earthquake data from RISEQ API"""
-        # The Indian RISEQ API is currently returning HTML block-pages instead of JSON
-        # Bypassing this fetch entirely to prevent the backend models from crashing
-        # The USGS API provides sufficient global coverage for the ML prediction matrices
+        """Fetch earthquake data from RISEQ API (HTML fallback parsing)"""
+        try:
+            import json
+            import re
+            from bs4 import BeautifulSoup
+            import aiohttp
+            from datetime import timedelta
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://riseq.seismo.gov.in/riseq/earthquake", headers={"User-Agent": "Mozilla/5.0"}) as response:
+                    if response.status == 200:
+                        html = await response.text()
+                        soup = BeautifulSoup(html, 'html.parser')
+                        earthquakes = []
+                        for li in soup.find_all('li', class_='event_list'):
+                            data_json = li.get('data-json')
+                            if data_json:
+                                data = json.loads(data_json)
+                                lat_long = data.get('lat_long', '')
+                                coords = [float(x.strip()) for x in lat_long.split(',')] if lat_long else [0, 0]
+                                mag_match = re.search(r'M:\s*([\d.]+)', data.get('magnitude_depth', ''))
+                                mag = float(mag_match.group(1)) if mag_match else 0
+                                depth_match = re.search(r'D:\s*([\d.]+)km', data.get('magnitude_depth', ''))
+                                depth = float(depth_match.group(1)) if depth_match else 0
+                                
+                                date_str = data.get('origin_time', '').replace(' IST', '')
+                                try:
+                                    local_time = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                                    utc_time = local_time - timedelta(hours=5, minutes=30)
+                                except:
+                                    utc_time = datetime.utcnow()
+                                    
+                                earthquakes.append({
+                                    'source': 'riseq',
+                                    'id': data.get('event_id', ''),
+                                    'magnitude': mag,
+                                    'latitude': float(coords[0]),
+                                    'longitude': float(coords[1]),
+                                    'depth': depth,
+                                    'place': data.get('event_name', 'Unknown').split('-')[-1].strip(),
+                                    'time': utc_time,
+                                    'timestamp': int(utc_time.timestamp() * 1000)
+                                })
+                        logger.info(f"Fetched {len(earthquakes)} events from RISEQ")
+                        return earthquakes
+        except Exception as e:
+            logger.error(f"Error fetching RISEQ data: {e}")
         return []
     
     @staticmethod

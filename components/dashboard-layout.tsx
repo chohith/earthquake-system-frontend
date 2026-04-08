@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useTranslation } from "react-i18next"
 import { GlobalVisualizationZone } from "@/components/zones/global-visualization-zone"
 import { FooterSection } from "@/components/zones/footer-section"
 import { RecentActivitySection } from "@/components/recent-activity-section"
@@ -30,7 +32,18 @@ const severityLevels = [
 export function DashboardLayout({ selectedLocation, onLocationSelect }: DashboardLayoutProps) {
   const [timeRange, setTimeRange] = useState("week")
   const [magnitudeRange, setMagnitudeRange] = useState<[number, number]>([0, 10])
-  const [searchRegion, setSearchRegion] = useState("")
+  const searchParams = useSearchParams()
+  const searchRegion = searchParams.get("region") || ""
+  
+  const { t } = useTranslation()
+
+  // Update severity labels from translation
+  const localizedSeverityLevels = [
+    { label: t("dashboard.minor"), range: "M < 4.0", color: "bg-green-500", textColor: "text-green-400", borderColor: "border-green-500/40" },
+    { label: t("dashboard.light"), range: "M 4.0-4.9", color: "bg-yellow-500", textColor: "text-yellow-400", borderColor: "border-yellow-500/40" },
+    { label: t("dashboard.moderate"), range: "M 5.0-5.9", color: "bg-orange-500", textColor: "text-orange-400", borderColor: "border-orange-500/40" },
+    { label: t("dashboard.strong"), range: "M ≥ 6.0", color: "bg-red-500", textColor: "text-red-400", borderColor: "border-red-500/40" },
+  ]
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
@@ -53,9 +66,9 @@ export function DashboardLayout({ selectedLocation, onLocationSelect }: Dashboar
         {/* Severity Color Legend - Centered */}
         <div className="flex justify-center w-full">
           <div className="bg-slate-900/60 border border-slate-700/40 rounded-lg p-6 max-w-3xl w-full">
-            <h3 className="text-white font-semibold text-sm mb-4">Magnitude Severity Legend</h3>
+            <h3 className="text-white font-semibold text-sm mb-4">{t("dashboard.legendTitle")}</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {severityLevels.map((level) => (
+              {localizedSeverityLevels.map((level) => (
                 <div key={level.label} className="flex flex-col items-start">
                   <div className="flex items-center gap-2 mb-2">
                     <span className={`w-3 h-3 rounded-full ${level.color}`} />
@@ -81,3 +94,4 @@ export function DashboardLayout({ selectedLocation, onLocationSelect }: Dashboar
     </div>
   )
 }
+

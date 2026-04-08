@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { fetchDualSourceEarthquakes } from "@/lib/dual-earthquake-fetch"
-import GlobeSceneInner from "@/components/globe-scene-inner" // Declare the variable before using it
+import { GlobeSceneInner } from "@/components/globe-scene-inner" // Declare the variable before using it
 
 // Dynamically import the globe.gl component to avoid SSR issues
 const GlobeGLComponent = dynamic(
@@ -29,12 +30,14 @@ function getMagnitudeColor(mag: number): string {
 }
 
 // Main Globe Section Component
-export function GlobeSection() {
+export function GlobeSection({ searchRegion = "" }: { searchRegion?: string }) {
   const [earthquakes, setEarthquakes] = useState<any[]>([])
   const [selectedQuake, setSelectedQuake] = useState<any>(null)
   const [timeRange, setTimeRange] = useState("week")
   const [loading, setLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
+  const [showIndiaLayer, setShowIndiaLayer] = useState(true)
+  const { t } = useTranslation()
 
   useEffect(() => {
     setMounted(true)
@@ -64,7 +67,7 @@ export function GlobeSection() {
     // Set up auto-refresh every 5 minutes for live updates
     const interval = setInterval(loadData, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [timeRange, mounted])
+  }, [timeRange, mounted, searchRegion])
 
   if (!mounted) return null
 
@@ -72,27 +75,35 @@ export function GlobeSection() {
     <Card className="w-full overflow-hidden border-slate-700 bg-slate-950">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-2xl text-cyan-400">Interactive Earthquake Globe</CardTitle>
+          <CardTitle className="text-2xl text-cyan-400">{t("globe.title")}</CardTitle>
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
             disabled={loading}
             className="px-3 py-1 rounded bg-slate-700 border border-cyan-500/30 text-white text-sm disabled:opacity-50"
           >
-            <option value="hour">Last Hour</option>
-            <option value="day">Last Day</option>
-            <option value="week">Last Week</option>
-            <option value="month">Last Month</option>
+            <option value="hour">{t("globe.lastHour")}</option>
+            <option value="day">{t("globe.lastDay")}</option>
+            <option value="week">{t("globe.lastWeek")}</option>
+            <option value="month">{t("globe.lastMonth")}</option>
           </select>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={`ml-4 ${showIndiaLayer ? 'bg-orange-500/20 text-orange-400 border-orange-500/50' : 'bg-slate-800 text-slate-400'}`}
+            onClick={() => setShowIndiaLayer(!showIndiaLayer)}
+          >
+            India Seismic Layer [{showIndiaLayer ? 'ON' : 'OFF'}]
+          </Button>
         </div>
         <p className="text-sm text-slate-400 mt-2">
-          Drag to rotate - Scroll to zoom - Click markers for details - Live data from USGS & partner sources
+          {t("globe.desc")}
         </p>
       </CardHeader>
 
       <CardContent className="p-0">
         <div className="w-full h-[600px] bg-gradient-to-b from-slate-900 via-slate-950 to-black relative">
-          <GlobeGLComponent earthquakes={earthquakes} onSelectQuake={setSelectedQuake} />
+          <GlobeGLComponent earthquakes={earthquakes} showIndiaLayer={showIndiaLayer} onSelectQuake={setSelectedQuake} searchRegion={searchRegion} />
 
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50">

@@ -112,10 +112,14 @@ async def predict_live_region(
             return {"error": f"No data found globally for the specified time window ({time_window})"}
             
         # Filter by substring in the 'place' field dynamically
-        df_filtered = df[df['place'].str.contains(country, case=False, na=False)]
+        if country.lower() == 'india':
+            # Strictly filter for Indian territory, RISEQ elements, and ignore generic 'India' substrings found in USA/Oceanic Ridge
+            df_filtered = df[(df['source'] == 'riseq') | (df['place'].str.contains(', India', case=False, na=False))]
+        else:
+            df_filtered = df[df['place'].str.contains(country, case=False, na=False)]
         
         if len(df_filtered) == 0:
-            return {"error": f"No earthquake data found for region '{country}' in the '{time_window}' window"}
+            return {"error": f"No earthquake data found strictly conforming to region '{country}' in the '{time_window}' window"}
 
         # Calculate logical parameters from the dynamically filtered historic data
         # Average/Summarized dataset structure required by the model: [Lat, Lon, Depth, Impact Score, rolling_mag, event_count]
@@ -157,11 +161,17 @@ async def predict_live_region(
         cnn_pred_scaled = max(0.0, min(9.9, rolling_mag + (cnn_pred - 0.5) * 3.0))
         ensemble_pred = (lstm_pred_scaled + cnn_pred_scaled) / 2
         
-        # Calculate probability conservatively.
-        # "Japan" pulls the ENTIRE nation, so event counts hit 100-300 easily. 
-        # We raise the denominator significantly to prevent the Probability from locking to 95% constantly.
-        base_probability = min(88.0, (event_count / 300.0) * 35 + (rolling_mag / 8.0) * 35 + (ensemble_pred / 10.0) * 10)
-        base_probability = max(12.0, base_probability) # floor value
+        # Calculate probability rigorously as a percentage (0-100%).
+        # Factor 1: Historical Seismic Frequency (Weight = 40%) - capped at 150 events
+        freq_factor = min(40.0, (event_count / 150.0) * 40.0)
+        # Factor 2: Rolling Magnitude (Weight = 40%) - normalized up to 8.0
+        mag_factor = min(40.0, (rolling_mag / 8.0) * 40.0)
+        # Factor 3: AI Ensemble Output (Weight = 20%) - normalized up to 10.0
+        model_factor = min(20.0, (ensemble_pred / 10.0) * 20.0)
+        
+        base_probability = freq_factor + mag_factor + model_factor
+        # Floor value to represent natural ambient risk even in quiet zones
+        base_probability = max(2.5, min(99.5, base_probability))
         
         
         # Get top most active specific locations in this country/region for the UI
@@ -221,6 +231,20 @@ async def calculate_risk_index():
             return {"error": "No recent global data to compute risk indexes over"}
             
         # Segment and cluster the most globally active regions right now 
+        # First, ensure all Indian Regional & RISEQ events are systematically clustered as 'India'
+        # rather than being globally fragmented into Mid Indian Ridge or separate states.
+        def map_region(row):
+            place = str(row.get('place', 'Unknown'))
+            source = str(row.get('source', 'usgs'))
+            if source == 'riseq' or ('India' in place and 'Mid' not in place):
+                return 'India'
+            # Strip the 'X km N of ' prefix to unify cities globally
+            if ' of ' in place:
+                return place.split(' of ')[-1].strip()
+            return place.strip()
+
+        df['place'] = df.apply(map_region, axis=1)
+        
         grouped = df.groupby('place').agg({
             'magnitude': ['mean', 'max', 'count'],
             'depth': 'mean',

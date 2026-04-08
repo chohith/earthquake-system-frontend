@@ -232,7 +232,6 @@ class TrainingPipeline:
             self.train_transformer(data)
             self.train_cnn(data)
             self.train_random_forest(data)
-            self.train_xgboost_lightgbm(data)
             
             # Evaluate all models
             results = self.evaluate_all_models(data)
