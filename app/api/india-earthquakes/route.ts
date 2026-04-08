@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 
+export const dynamic = 'force-dynamic';
 export const revalidate = 60; // Poll every 60s as requested
 
 // Simple in-memory cache
