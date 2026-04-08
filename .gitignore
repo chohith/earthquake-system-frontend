@@ -8,3 +8,19 @@ node_modules/
 .next/
 .env*.local
 .DS_Store
+
+# Hugging Face backend (has its own separate git repo - not for Vercel)
+hf_deploy_final/
+
+# Python environments and cache
+.venv/
+venv/
+backend/venv/
+__pycache__/
+*.pyc
+
+# Large test/temp files
+test.html
+test_riseq.js
+test_riseq.py
+tsconfig.tsbuildinfo
