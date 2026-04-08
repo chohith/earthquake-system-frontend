@@ -33,13 +33,13 @@ export function HeroNavigation() {
 
         {/* Main Title */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl lg:text-5xl font-black text-white tracking-tight leading-tight mb-4 uppercase">
+          <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white tracking-tight leading-tight mb-4">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 leading-tight block mb-2">
-              AI-DRIVEN REAL-TIME SPATIOTEMPORAL ANALYSIS
+              AI-Driven Real-Time Spatiotemporal Analysis
             </span>
-            AND SEISMIC RISK MONITORING SYSTEM
+            and Seismic Risk Monitoring System
           </h1>
-          <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto">
+          <p className="text-slate-400 text-base md:text-lg max-w-2xl mx-auto">
             {t("hero.desc")}
           </p>
         </div>

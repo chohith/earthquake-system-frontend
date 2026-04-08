@@ -1,12 +1,19 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter, Outfit } from "next/font/google"
+import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { I18nProvider } from "./i18n-provider"
 import "./globals.css"
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
-const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" })
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+})
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+})
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -51,7 +58,7 @@ export default function RootLayout({
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="theme-color" content="#0f172a" />
       </head>
-      <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         <I18nProvider>
           {children}
         </I18nProvider>
