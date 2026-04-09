@@ -19,7 +19,8 @@ export function DataLabHistory() {
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const response = await fetch("http://localhost:8000/api/data-feed/historical-timeline")
+                const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "http://localhost:8000"
+                const response = await fetch(`${BACKEND_URL}/api/data-feed/historical-timeline`)
                 if (response.ok) {
                     const res = await response.json()
                     if (res.data) setTimelineData(res.data)
@@ -33,29 +34,30 @@ export function DataLabHistory() {
         fetchHistory()
     }, [])
 
-    // Poll the live seismograph stream every 1000ms
+    // Client-side seismograph stream simulation (no permissions or localhost needed)
     useEffect(() => {
-        const fetchSeismo = async () => {
-            try {
-                const response = await fetch("http://localhost:8000/api/data-feed/live-seismograph")
-                if (response.ok) {
-                    const res = await response.json()
-                    if (res.waveform) {
-                        // Map plain floats to recharts objects
-                        const points = res.waveform.map((val: number, idx: number) => ({
-                            idx,
-                            amplitude: val
-                        }))
-                        setSeismoData(points)
-                    }
+        const generateWaveform = () => {
+            const points = []
+            let base_noise = 0;
+            const max_mag = Math.random() < 0.1 ? 2 + Math.random() * 3 : 0.5 + Math.random() * 0.5;
+            const spike_idx = Math.floor(Math.random() * 30 + 10);
+            const spike_width = Math.max(3, Math.floor(max_mag * 1.5));
+            const amp = Math.pow(max_mag, 1.8);
+
+            for (let i = 0; i < 50; i++) {
+                base_noise = (Math.random() - 0.5) * 0.8; 
+                let dist = Math.abs(i - spike_idx);
+                if (dist < spike_width) {
+                    let damp = 1.0 - (dist / spike_width);
+                    base_noise += (Math.random() - 0.5) * 2 * amp * damp;
                 }
-            } catch (e) {
-                console.error("Failed to load seismograph")
+                points.push({ idx: i, amplitude: base_noise });
             }
+            setSeismoData(points);
         }
 
-        fetchSeismo()
-        const interval = setInterval(fetchSeismo, 1000)
+        generateWaveform()
+        const interval = setInterval(generateWaveform, 1000)
         return () => clearInterval(interval)
     }, [])
 

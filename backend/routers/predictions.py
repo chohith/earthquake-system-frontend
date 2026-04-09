@@ -27,9 +27,8 @@ class SimpleCache:
     def set(self, key, value):
         self.cache[key] = (value, time.time())
 
-# Create a cache that remembers answers for 5 minutes (300 seconds)
-# You can change this to 3600 for 1 hour!
-api_cache = SimpleCache(ttl_seconds=300)
+# Create a cache that remembers answers for 2 minutes (120 seconds)
+api_cache = SimpleCache(ttl_seconds=120)
 # -----------------------------
 
 @router.post("/magnitude")
@@ -113,8 +112,17 @@ async def predict_live_region(
             
         # Filter by substring in the 'place' field dynamically
         if country.lower() == 'india':
-            # Strictly filter for Indian territory, RISEQ elements, and ignore generic 'India' substrings found in USA/Oceanic Ridge
-            df_filtered = df[(df['source'] == 'riseq') | (df['place'].str.contains(', India', case=False, na=False))]
+            # STRICT FILTER: 
+            # 1. Source must be RISEQ OR 
+            # 2. Place contains "India" AND coordinates must be within Indian territory bounds
+            # 3. Exclude known noise like 'Mid', 'Ridge', 'Indiana', 'Springs', 'Nevada'
+            india_mask = (df['source'] == 'riseq') | (
+                (df['place'].str.contains('India', case=False, na=False)) & 
+                (df['latitude'].between(6, 38)) & 
+                (df['longitude'].between(68, 98)) &
+                (~df['place'].str.contains('Ridge|Mid|Nevada|California|Ocean|Indiana|Springs', case=False, na=False))
+            )
+            df_filtered = df[india_mask]
         else:
             df_filtered = df[df['place'].str.contains(country, case=False, na=False)]
         
@@ -236,8 +244,18 @@ async def calculate_risk_index():
         def map_region(row):
             place = str(row.get('place', 'Unknown'))
             source = str(row.get('source', 'usgs'))
-            if source == 'riseq' or ('India' in place and 'Mid' not in place):
+            lat = float(row.get('latitude', 0))
+            lon = float(row.get('longitude', 0))
+            
+            # Check for India
+            is_india_by_name = 'India' in place and not any(x in place for x in ['Mid', 'Ridge', 'Ocean', 'Southern', 'Springs', 'Nevada', 'Antarctic', 'Indiana'])
+            is_in_india_bounds = (6 <= lat <= 38) and (68 <= lon <= 98)
+            
+            if source == 'riseq' or (is_india_by_name and is_in_india_bounds):
                 return 'India'
+            # Remove "Mid Indian Ridge" and similar oceanic ridge noise
+            if 'Ridge' in place or 'Oceanic' in place:
+                return 'Indian Ocean (Ridges)'
             # Strip the 'X km N of ' prefix to unify cities globally
             if ' of ' in place:
                 return place.split(' of ')[-1].strip()

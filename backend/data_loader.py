@@ -14,7 +14,7 @@ import os
 logger = logging.getLogger(__name__)
 
 _DATA_CACHE = {}
-_CACHE_TIMEOUT_MINS = 5
+_CACHE_TIMEOUT_MINS = 3
 
 class DualSourceDataLoader:
     """Loads earthquake data from USGS and RISEQ sources"""
