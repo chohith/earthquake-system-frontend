@@ -9,44 +9,67 @@ router = APIRouter()
 _historical_cache = None
 
 @router.get("/historical-timeline")
-def get_historical_timeline():
+async def get_historical_timeline(duration: str = "month"):
     """
-    Pulls an entire decade (2015-2025) of M6.0+ global earthquakes 
-    to feed the UI 3D Globe Time-lapse slider.
+    Pulls seismic data to feed the UI 3D Globe Time-lapse slider.
+    Supports: hour, day, week, month, year, decade.
     """
-    global _historical_cache
-    if _historical_cache:
-        return _historical_cache
-        
+    from data_loader import DualSourceDataLoader
+    
+    # Decades/Years use the M6.0+ historical fetch (Manageable size for large time windows)
+    if duration in ["year", "decade"]:
+        global _historical_cache
+        if _historical_cache and _historical_cache.get("duration") == duration:
+            return _historical_cache
+            
+        try:
+            start_year = "2015" if duration == "decade" else str(datetime.now().year - 1)
+            url = f"https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime={start_year}-01-01&endtime=2025-12-31&minmagnitude=6.0"
+            
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                features = []
+                for feature in data.get('features', []):
+                    props = feature['properties']
+                    coords = feature['geometry']['coordinates']
+                    features.append({
+                        "time": props['time'],
+                        "place": props['place'],
+                        "magnitude": props['mag'],
+                        "latitude": coords[1],
+                        "longitude": coords[0],
+                        "depth": coords[2]
+                    })
+                features = sorted(features, key=lambda x: x['time'])
+                result = {"status": "success", "count": len(features), "data": features, "duration": duration}
+                _historical_cache = result
+                return result
+        except Exception as e:
+            return {"error": str(e)}
+
+    # Recent windows (hour, day, week, month) use our filtered Dual Source Loader
     try:
-        # Requesting M6.0+ over 10 years gives a beautiful, manageable dataset (approx 1,500 events)
-        url = "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2015-01-01&endtime=2025-12-31&minmagnitude=6.0"
+        loader = DualSourceDataLoader()
+        df = await loader.load_combined_data(duration)
         
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
+        if len(df) == 0:
+            return {"status": "success", "count": 0, "data": []}
             
-            features = []
-            for feature in data.get('features', []):
-                props = feature['properties']
-                coords = feature['geometry']['coordinates']
-                
-                features.append({
-                    "time": props['time'],
-                    "place": props['place'],
-                    "magnitude": props['mag'],
-                    "latitude": coords[1],
-                    "longitude": coords[0],
-                    "depth": coords[2]
-                })
+        features = []
+        for _, row in df.iterrows():
+            features.append({
+                "time": int(row['time'].timestamp() * 1000),
+                "place": row['place'],
+                "magnitude": row['magnitude'],
+                "latitude": row['latitude'],
+                "longitude": row['longitude'],
+                "depth": row['depth']
+            })
             
-            # Sort chronologically for the time-lapse player
-            features = sorted(features, key=lambda x: x['time'])
-            result = {"status": "success", "count": len(features), "data": features}
-            _historical_cache = result
-            return result
-            
-        return {"error": "Failed to fetch USGS historical API"}
+        # Sort chronologically for the time-lapse player
+        features = sorted(features, key=lambda x: x['time'])
+        return {"status": "success", "count": len(features), "data": features, "duration": duration}
     except Exception as e:
         return {"error": str(e)}
 

@@ -183,10 +183,14 @@ async def predict_live_region(
         
         
         # Get top most active specific locations in this country/region for the UI
-        # We strip the "X km N of " part from USGS strings to just get the city/region name
-        affected_localities = df_filtered['place'].apply(
-            lambda x: x.split(' of ')[-1].strip() if ' of ' in x else x.strip()
-        ).value_counts().head(3).index.tolist()
+        if country.lower() == 'india':
+            # For India, we group by State names for a clearer regional overview
+            affected_localities = df_filtered['place'].value_counts().head(3).index.tolist()
+        else:
+            # For other countries, we strip the "X km N of " part from USGS strings
+            affected_localities = df_filtered['place'].apply(
+                lambda x: x.split(' of ')[-1].strip() if ' of ' in x else x.strip()
+            ).value_counts().head(3).index.tolist()
         
         result = {
             "region": country.title(),
@@ -247,15 +251,19 @@ async def calculate_risk_index():
             lat = float(row.get('latitude', 0))
             lon = float(row.get('longitude', 0))
             
-            # Check for India
-            is_india_by_name = 'India' in place and not any(x in place for x in ['Mid', 'Ridge', 'Ocean', 'Southern', 'Springs', 'Nevada', 'Antarctic', 'Indiana'])
+            # Use the global helper for India
+            from data_loader import extract_indian_state
+            
+            is_india_by_name = 'INDIA' in place.upper() and not any(x in place.upper() for x in ['MID', 'RIDGE', 'OCEAN', 'INDIANA', 'NEVADA'])
             is_in_india_bounds = (6 <= lat <= 38) and (68 <= lon <= 98)
             
             if source == 'riseq' or (is_india_by_name and is_in_india_bounds):
-                return 'India'
+                return extract_indian_state(place)
+                
             # Remove "Mid Indian Ridge" and similar oceanic ridge noise
-            if 'Ridge' in place or 'Oceanic' in place:
-                return 'Indian Ocean (Ridges)'
+            if any(x in place.upper() for x in ['RIDGE', 'OCEANIC', 'INDIANA', 'NEVADA']):
+                return 'Other/Noise (Filtered)'
+                
             # Strip the 'X km N of ' prefix to unify cities globally
             if ' of ' in place:
                 return place.split(' of ')[-1].strip()
@@ -272,7 +280,11 @@ async def calculate_risk_index():
         
         grouped.columns = ['place', 'mag_mean', 'mag_max', 'event_count', 'depth_mean', 'lat', 'lon']
         # Filter regions with at least 5 meaningful quakes to ensure they are active clusters
-        active_regions = grouped[grouped['event_count'] >= 5].sort_values(by='mag_max', ascending=False)
+        # Exclude the noise category explicitly
+        active_regions = grouped[
+            (grouped['event_count'] >= 5) & 
+            (grouped['place'] != 'Other/Noise (Filtered)')
+        ].sort_values(by='mag_max', ascending=False)
         
         ann = get_ann_model()
         scaler = get_ann_scaler()

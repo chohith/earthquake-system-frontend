@@ -16,6 +16,24 @@ logger = logging.getLogger(__name__)
 _DATA_CACHE = {}
 _CACHE_TIMEOUT_MINS = 3
 
+INDIAN_STATES = [
+    "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", 
+    "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli", "Daman and Diu", "Delhi", 
+    "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", 
+    "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", 
+    "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", 
+    "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", 
+    "Uttarakhand", "West Bengal"
+]
+
+def extract_indian_state(place: str) -> str:
+    """Helper to extract Indian state from a place string."""
+    place_upper = place.upper()
+    for state in INDIAN_STATES:
+        if state.upper() in place_upper:
+            return state
+    return place # Fallback to original if no state matched
+
 class DualSourceDataLoader:
     """Loads earthquake data from USGS and RISEQ sources"""
     
@@ -169,8 +187,46 @@ class DualSourceDataLoader:
         df = pd.DataFrame(combined)
         
         if len(df) > 0:
-            df = df.sort_values('time', ascending=False)
-            logger.info(f"Combined dataset: {len(df)} unique events from both sources")
+            # --- GLOBAL FILTERING LOGIC ---
+            # Remove unwanted noise (Indiana, Nevada, Ridge, Ocean, Mid) 
+            # for any event that isn't specifically marked as Indian seismic source
+            noise_pattern = r'Indiana|Nevada|Ridge|Ocean|Mid|Springs|California|Antarctic|Southern|Ridge|Indiana'
+            
+            def process_row(row):
+                place = str(row.get('place', ''))
+                source = str(row.get('source', ''))
+                lat = float(row.get('latitude', 0))
+                lon = float(row.get('longitude', 0))
+                
+                # Check for Indian context
+                is_in_india_bounds = (6 <= lat <= 38) and (68 <= lon <= 98)
+                is_india_by_name = 'INDIA' in place.upper() and not re.search(r'Mid|Ridge|Ocean|Indiana', place, re.I)
+                
+                if source == 'riseq' or (is_india_by_name and is_in_india_bounds):
+                    # It's an Indian event - try to map to a state for cleaner analytics
+                    row['place'] = extract_indian_state(place)
+                    return row, False # Keep and processed
+                
+                # If it's USGS, check for noise patterns
+                if re.search(noise_pattern, place, re.IGNORECASE):
+                    return row, True # Filter out noise
+                    
+                return row, False # Keep other global quakes
+
+            import re
+            rows_processed = []
+            for _, r in df.iterrows():
+                new_row, filtered = process_row(r.to_dict())
+                if not filtered:
+                    rows_processed.append(new_row)
+            
+            df = pd.DataFrame(rows_processed)
+            
+            if not df.empty:
+                df = df.sort_values('time', ascending=False)
+                logger.info(f"Combined dataset: {len(df)} unique events from both sources after noise filtering")
+            else:
+                logger.warning("All events filtered out as noise!")
             
         # Store in cache
         _DATA_CACHE[endpoint] = (now, df)

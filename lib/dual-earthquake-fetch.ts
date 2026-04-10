@@ -96,37 +96,38 @@ async function fetchFromRISEQ(): Promise<EarthquakeData[]> {
 }
 
 /**
- * Fetch earthquake data from both sources and merge
- * Deduplicates based on location and time proximity
+ * Fetch earthquake data from both sources via the centralized Python backend
+ * This ensures strict filtering (no noise) and dynamic duration support.
  */
 export async function fetchDualSourceEarthquakes(timeRange: string = 'week'): Promise<EarthquakeData[]> {
+  const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-earthquake-prediction-system.hf.space";
+  
   try {
-    const [usgsData, riseqData] = await Promise.all([
-      fetchFromUSGS(timeRange),
-      fetchFromRISEQ(),
-    ])
+     // duration mapping: 'hour'|'day'|'week'|'month'
+     const response = await fetch(`${BACKEND_URL}/api/data_feed/historical-timeline?duration=${timeRange}`, {
+       cache: 'no-store'
+     });
 
-    // Merge and deduplicate
-    const merged: EarthquakeData[] = [...usgsData, ...riseqData]
+     if (!response.ok) throw new Error(`Backend fetch failed: ${response.status}`);
+     const result = await response.json();
 
-    // Remove duplicates based on similar coordinates and magnitude (within 0.1 degrees and 0.1 magnitude)
-    const seen = new Set<string>()
-    const deduplicated: EarthquakeData[] = []
-
-    merged.forEach((item) => {
-      const key = `${Math.round(item.lat * 100)}-${Math.round(item.lng * 100)}-${Math.round(item.mag * 10)}`
-      if (!seen.has(key)) {
-        seen.add(key)
-        deduplicated.push(item)
-      }
-    })
-
-    // Sort by timestamp descending (most recent first)
-    return deduplicated.sort((a, b) => b.timestamp - a.timestamp)
+     if (result.data) {
+        return result.data.map((e: any) => ({
+            id: `quake-${e.time}-${e.latitude}`,
+            lat: e.latitude,
+            lng: e.longitude,
+            mag: e.magnitude,
+            place: e.place, // Now maps to State names for Indian events!
+            time: new Date(e.time).toLocaleString(),
+            depth: e.depth,
+            timestamp: e.time,
+            source: e.source || 'usgs'
+        }));
+     }
+     return [];
   } catch (error) {
-    console.error('[dual-earthquake-fetch] Combined fetch error:', error)
-    // Fallback to USGS only
-    return fetchFromUSGS(timeRange)
+    console.error('[dual-earthquake-fetch] Unified fetch error:', error);
+    return [];
   }
 }
 
