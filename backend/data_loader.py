@@ -27,7 +27,7 @@ def extract_indian_state(place: str) -> str:
     place_upper = place.upper()
     for state in INDIAN_STATES:
         if state.upper() in place_upper:
-            return state
+            return f"{state}, India"
     return place # Fallback to original if no state matched
 
 class DualSourceDataLoader:
