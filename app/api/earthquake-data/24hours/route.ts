@@ -37,7 +37,7 @@ export async function GET() {
         totalEvents: mappedEvents.length,
         maxMagnitude: magnitudes.length > 0 ? Math.max(...magnitudes) : 0,
         avgMagnitude: magnitudes.length > 0 ? magnitudes.reduce((a, b) => a + b, 0) / magnitudes.length : 0,
-        avgDepth: mappedEvents.length > 0 ? mappedEvents.reduce((a, b) => a + b, e.depth) / mappedEvents.length : 0,
+        avgDepth: mappedEvents.length > 0 ? mappedEvents.reduce((acc: number, item: any) => acc + (item.depth || 0), 0) / mappedEvents.length : 0,
         sourceBreakdown: result.stats?.usgs_count ? { 
             usgs: result.stats.usgs_count, 
             riseq: result.stats.riseq_count 

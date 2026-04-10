@@ -7,10 +7,6 @@ import logging
 from collections import defaultdict
 import os
 
-import logging
-from collections import defaultdict
-import os
-
 logger = logging.getLogger(__name__)
 
 _DATA_CACHE = {}

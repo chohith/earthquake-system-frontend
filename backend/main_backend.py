@@ -75,7 +75,7 @@ app.include_router(health.router, tags=["Health"])
 app.include_router(predictions.router, prefix="/api/predictions", tags=["Predictions"])
 app.include_router(models.router, prefix="/api/models", tags=["Models"])
 app.include_router(data.router, prefix="/api/data", tags=["Data"])
-app.include_router(data_feed.router, prefix="/api/data-feed", tags=["Data Feed"])
+app.include_router(data_feed.router, prefix="/api/data_feed", tags=["Data Feed"])
 
 @app.on_event("startup")
 def startup_event():
