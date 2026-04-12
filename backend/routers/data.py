@@ -21,6 +21,20 @@ async def get_live_earthquakes(limit: int = 100):
             "timestamp": None
         }
 
+@router.get("/recent")
+async def get_recent_earthquakes(duration: str = 'week'):
+    """Fetch earthquake data from both sources via the centralized Python backend"""
+    try:
+        loader = DualSourceDataLoader()
+        df = await loader.load_combined_data(duration)
+        if len(df) > 0:
+            events = df.to_dict('records')
+            return {"status": "success", "data": events}
+        return {"status": "success", "data": []}
+    except Exception as e:
+        logger.error(f"Error fetching recent earthquakes: {e}")
+        return {"error": str(e)}
+
 
 @router.get("/statistics")
 async def get_statistics():

@@ -19,8 +19,8 @@ export function DataLabHistory() {
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "http://localhost:8000"
-                const response = await fetch(`${BACKEND_URL}/api/data-feed/historical-timeline`)
+                const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-seismic-ml-engine-live.hf.space"
+                const response = await fetch(`${BACKEND_URL}/api/data_feed/historical-timeline?duration=decade`)
                 if (response.ok) {
                     const res = await response.json()
                     if (res.data) setTimelineData(res.data)

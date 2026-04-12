@@ -1,7 +1,7 @@
 /**
  * Service to communicate with Python ML Backend
  */
-const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-earthquake-prediction-system.hf.space"
+const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-seismic-ml-engine-live.hf.space"
 
 export interface PredictionResponse {
   prediction: number

@@ -160,45 +160,20 @@ export function ChatbotWidget() {
     setInput("")
     setIsTyping(true)
 
-    // Check for local QA matches before calling backend
-    const lowerInput = input.toLowerCase()
-    
-    // Quick QA Logic
+    // Quick QA Logic removed to force complete LLM Autonomy for ALL queries!
     setTimeout(async () => {
       let replyContent = ""
-      if (lowerInput.includes("website") || lowerInput.includes("how does this work") || lowerInput.includes("what is this")) {
-        replyContent = "This is the SeismoAI Platform! We provide Live Monitoring, an Analytics Dashboard, and Emergency Preparedness tools. We actively pool telemetry from the USGS and the Indian National Center for Seismology to give you real-time 3D mappings."
-      } else if (lowerInput.includes("india") || lowerInput.includes("riseq") || lowerInput.includes("live") || lowerInput.includes("delhi") || lowerInput.includes("recent")) {
-        try {
-           const response = await fetch('/api/india-earthquakes');
-           if (!response.ok) throw new Error("API Route Blocked");
-           const data = await response.json();
-           const recentInd = data.features?.slice(0, 3) || [];
-           if (recentInd.length > 0) {
-              replyContent = "I am actively monitoring the Indian region! Here are the latest pinpointed events fetched directly from our telemetry grids without needing external links:\n\n" + 
-                 recentInd.map((f:any, i:number) => `🔹 M${f.properties.mag} — ${f.properties.place} (Depth: ${f.properties.depth}km)`).join('\n');
-           } else {
-              replyContent = "I am actively monitoring the Indian region! Currently, no significant events have been pinpointed in the local database.";
-           }
-        } catch (e) {
-           replyContent = "I attempted to actively fetch the latest Indian events, but encountered a slight network hiccup. You can view them actively rendering on the globe!";
-        }
-      } else if (lowerInput.includes("who made this") || lowerInput.includes("author") || lowerInput.includes("developer")) {
-        replyContent = "This platform was built as part of an Advanced AI-Driven Seismic Analysis Project."
-      } else if (lowerInput.includes("predict") || lowerInput.includes("future")) {
-        replyContent = "Our AI models calculate regional risk indices and output probabilistic forecasting up to 7-14 days. You can explore these metrics in the Data Lab & History module."
-      } else {
-        try {
-           const answerRes = await fetch('/api/chat', { 
-              method: 'POST', 
-              headers: { 'Content-Type': 'application/json' }, 
-              body: JSON.stringify({ query: input, language: i18n.language }) 
-           });
-           const answerData = await answerRes.json();
-           replyContent = answerData.answer;
-        } catch {
-           replyContent = "I am a bit overloaded right now and cannot reach my external knowledge base. If there is an emergency, please use the location sharing capability!";
-        }
+      try {
+         const answerRes = await fetch('/api/chat', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ query: input, language: i18n.language }) 
+         });
+         if (!answerRes.ok) throw new Error("Chat Endpoint Failed");
+         const answerData = await answerRes.json();
+         replyContent = answerData.answer;
+      } catch {
+         replyContent = "I am experiencing network difficulties reaching my AI Hub. Please check your connection.";
       }
 
       setMessages((prev) => [
@@ -211,7 +186,7 @@ export function ChatbotWidget() {
         },
       ])
       setIsTyping(false)
-    }, 500)
+    }, 100)
   }
 
   const handleTextToSpeech = (text: string) => {

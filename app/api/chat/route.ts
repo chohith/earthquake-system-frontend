@@ -43,13 +43,35 @@ export async function POST(req: Request) {
       enQuery = await translateText(query, targetCode, 'en');
     }
 
+    // Step 1.5: Dynamically fetch local Next.js proxy cache for 24-hour earthquakes to give LLM real-time situational awareness!
+    let liveContext = "";
+    try {
+       // Using the host from request to construct absolute URL for local proxy fetch
+       const protocol = req.headers.get("x-forwarded-proto") || "http";
+       const host = req.headers.get("host") || "localhost:3000";
+       const baseUrl = `${protocol}://${host}`;
+       
+       const liveReq = await fetch(`${baseUrl}/api/earthquake-data/24hours`);
+       if (liveReq.ok) {
+           const liveData = await liveReq.json();
+           const top5 = (liveData.data || []).slice(0, 5);
+           if (top5.length > 0) {
+               liveContext = `\n\nLIVE SENSORS INJECTION (Past 24 Hours):\nThe system is currently tracking ${liveData.count} global events today.\nThe largest 5 are:\n` +
+                 top5.map((eq: any) => `- M${eq.magnitude.toFixed(1)} in ${eq.location} (Depth: ${eq.depth}km, Source: ${eq.source})`).join("\n") +
+                 `\n\nUse this live structured data to directly answer user questions about current/recent/live events autonomously!`;
+           }
+       }
+    } catch(e) {
+       console.error("LLM Context Builder Failed:", e);
+    }
+
     // Step 2: Push securely to an open Pollinations LLM Proxy API injected with the SeismoAI System Prompt
     const aiResponse = await fetch('https://text.pollinations.ai/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: SYSTEM_PROMPT + liveContext },
             { role: 'user', content: enQuery }
          ],
          model: 'openai'

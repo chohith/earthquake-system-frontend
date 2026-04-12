@@ -139,19 +139,11 @@ export function RecentActivitySection({ selectedLocation, onSelectEvent, searchR
     return Math.abs(value).toFixed(2)
   }
 
-  const getDynamicRelativeTime = (ts: number) => {
-    try {
-      const rtf = new Intl.RelativeTimeFormat(i18n.language.split('-')[0], { numeric: 'auto' })
-      const diffInSeconds = (ts - Date.now()) / 1000
-      if (Math.abs(diffInSeconds) < 60) return i18n.language === 'ta' ? "இப்போது" : "Just now"
-      const diffInMinutes = Math.round(diffInSeconds / 60)
-      if (Math.abs(diffInMinutes) < 60) return rtf.format(diffInMinutes, 'minute')
-      const diffInHours = Math.round(diffInMinutes / 60)
-      if (Math.abs(diffInHours) < 24) return rtf.format(diffInHours, 'hour')
-      return rtf.format(Math.round(diffInHours / 24), 'day')
-    } catch {
-      return "Recently"
-    }
+  const formatExactDate = (ts: number) => {
+    return new Date(ts).toLocaleString(undefined, { 
+       year: 'numeric', month: 'short', day: 'numeric', 
+       hour: '2-digit', minute: '2-digit', second: '2-digit'
+    })
   }
 
   const renderEarthquakeTable = (data: Earthquake[]) => (
@@ -190,7 +182,7 @@ export function RecentActivitySection({ selectedLocation, onSelectEvent, searchR
                   {quake.mag >= 7 ? t("dashboard.strong") : quake.mag >= 6 ? t("dashboard.strong") : quake.mag >= 4 ? t("dashboard.moderate") : t("dashboard.minor")}
                 </span>
               </td>
-              <td className="py-3 px-4 text-slate-300 whitespace-nowrap">{getDynamicRelativeTime(quake.timestamp)}</td>
+              <td className="py-3 px-4 text-slate-300 whitespace-nowrap">{formatExactDate(quake.timestamp)}</td>
               <td className="py-3 px-4 text-slate-300 text-center whitespace-nowrap">{quake.depth.toFixed(1)}</td>
             </tr>
           ))}

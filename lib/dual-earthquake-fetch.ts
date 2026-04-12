@@ -100,11 +100,11 @@ async function fetchFromRISEQ(): Promise<EarthquakeData[]> {
  * This ensures strict filtering (no noise) and dynamic duration support.
  */
 export async function fetchDualSourceEarthquakes(timeRange: string = 'week'): Promise<EarthquakeData[]> {
-  const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-earthquake-prediction-system.hf.space";
+  const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-seismic-ml-engine-live.hf.space";
   
   try {
      // duration mapping: 'hour'|'day'|'week'|'month'
-     const response = await fetch(`${BACKEND_URL}/api/data_feed/historical-timeline?duration=${timeRange}`, {
+     const response = await fetch(`${BACKEND_URL}/api/data/recent?duration=${timeRange}`, {
        cache: 'no-store'
      });
 

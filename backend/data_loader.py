@@ -4,6 +4,7 @@ import numpy as np
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
+import re
 from collections import defaultdict
 import os
 
@@ -183,11 +184,18 @@ class DualSourceDataLoader:
         df = pd.DataFrame(combined)
         
         if len(df) > 0:
-            # --- GLOBAL FILTERING LOGIC ---
-            # Remove unwanted noise (Indiana, Nevada, Ridge, Ocean, Mid) 
-            # for any event that isn't specifically marked as Indian seismic source
-            noise_pattern = r'Indiana|Nevada|Ridge|Ocean|Mid|Springs|California|Antarctic|Southern|Ridge|Indiana'
-            
+            # Time filter based on endpoint duration
+            now = datetime.utcnow()
+            time_thresholds = {
+                'hour': timedelta(hours=1),
+                'day': timedelta(days=1),
+                'week': timedelta(days=7),
+                'month': timedelta(days=30)
+            }
+            if endpoint in time_thresholds:
+                threshold_time = now - time_thresholds[endpoint]
+                df = df[df['time'] >= threshold_time]
+
             def process_row(row):
                 place = str(row.get('place', ''))
                 source = str(row.get('source', ''))
@@ -199,23 +207,12 @@ class DualSourceDataLoader:
                 is_india_by_name = 'INDIA' in place.upper() and not re.search(r'Mid|Ridge|Ocean|Indiana', place, re.I)
                 
                 if source == 'riseq' or (is_india_by_name and is_in_india_bounds):
-                    # It's an Indian event - try to map to a state for cleaner analytics
+                    # It's an Indian event - map to state
                     row['place'] = extract_indian_state(place)
-                    return row, False # Keep and processed
-                
-                # If it's USGS, check for noise patterns
-                if re.search(noise_pattern, place, re.IGNORECASE):
-                    return row, True # Filter out noise
                     
-                return row, False # Keep other global quakes
+                return row
 
-            import re
-            rows_processed = []
-            for _, r in df.iterrows():
-                new_row, filtered = process_row(r.to_dict())
-                if not filtered:
-                    rows_processed.append(new_row)
-            
+            rows_processed = [process_row(r.to_dict()) for _, r in df.iterrows()]
             df = pd.DataFrame(rows_processed)
             
             if not df.empty:

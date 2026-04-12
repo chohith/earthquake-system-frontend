@@ -88,7 +88,7 @@ export function GlobeGLComponent({ earthquakes, showIndiaLayer = true, searchReg
                 </div>
                 <div style="font-size: 12px; color: #cbd5e1; margin-top: 6px;">${t('recent.depth')}: ${d.quake.depth} km</div>
                 <div style="font-size: 12px; color: #cbd5e1; margin-top: 2px;">Time: ${new Date(d.quake.time).toLocaleString()}</div>
-                <div style="font-size: 12px; color: #cbd5e1; margin-top: 2px;">${t('recent.sourcePrefix').split(':')[0] || 'Source'}: <strong style="color: ${d.quake.id?.startsWith('imd') ? '#ff9933' : '#a78bfa'}">${d.quake.id?.startsWith('imd') ? 'India (IMD)' : 'USGS Database'}</strong></div>
+                <div style="font-size: 12px; color: #cbd5e1; margin-top: 2px;">${t('recent.sourcePrefix').split(':')[0] || 'Source'}: <strong style="color: ${d.quake.source === 'riseq' ? '#ff9933' : '#a78bfa'}">${d.quake.source === 'riseq' ? 'India (IMD)' : 'USGS Database'}</strong></div>
               </div>
             `)
             globe.onPointClick((d: any) => {
@@ -119,7 +119,7 @@ export function GlobeGLComponent({ earthquakes, showIndiaLayer = true, searchReg
         
         // India Saffron Ripple Rings Layer
         if (showIndiaLayer) {
-           const indianQuakes = earthquakes.filter(q => q.id && q.id.startsWith('imd'));
+           const indianQuakes = earthquakes.filter(q => q.source === 'riseq');
            const ringsData = indianQuakes.map(quake => ({
              lat: quake.lat,
              lng: quake.lng,
