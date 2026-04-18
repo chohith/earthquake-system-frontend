@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 60; // Refresh every minute
+export const revalidate = 0; // Never cache this route
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-seismic-ml-engine-live.hf.space";
 
 export async function GET() {
   try {
     // 1. Fetch from the centralized Python backend (Filtered for noise/deduplicated)
-    const response = await fetch(`${BACKEND_URL}/api/data/live-earthquakes?limit=500`, {
-      cache: 'no-store'
+    const response = await fetch(`${BACKEND_URL}/api/data/live-earthquakes?limit=1000`, {
+      cache: 'no-store',
+      next: { revalidate: 0 } 
     });
 
     if (!response.ok) {

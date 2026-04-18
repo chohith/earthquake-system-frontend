@@ -65,7 +65,9 @@ export async function predictMagnitude(features: number[], modelName: string = "
  */
 export async function getLiveEarthquakes(limit: number = 100): Promise<LiveEarthquakeData> {
   try {
-    const response = await fetch(`${BACKEND_URL}/api/data/live-earthquakes?limit=${limit}`)
+    const response = await fetch(`${BACKEND_URL}/api/data/live-earthquakes?limit=${limit}`, {
+      cache: "no-store",
+    })
 
     if (!response.ok) throw new Error(`Failed to fetch live earthquakes: ${response.statusText}`)
     return await response.json()
@@ -80,7 +82,9 @@ export async function getLiveEarthquakes(limit: number = 100): Promise<LiveEarth
  */
 export async function getEarthquakeStatistics() {
   try {
-    const response = await fetch(`${BACKEND_URL}/api/data/statistics`)
+    const response = await fetch(`${BACKEND_URL}/api/data/statistics`, {
+      cache: "no-store",
+    })
 
     if (!response.ok) throw new Error(`Failed to fetch statistics: ${response.statusText}`)
     return await response.json()

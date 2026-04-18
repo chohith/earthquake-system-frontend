@@ -104,8 +104,9 @@ async def predict_live_region(
 
     try:
         # Load live data from the unified loader
+        # Load live data from the unified loader (Using 'week' for faster processing while maintaining context)
         loader = DualSourceDataLoader()
-        df = await loader.load_combined_data(time_window)
+        df = await loader.load_combined_data('week')
         
         if len(df) == 0:
             return {"error": f"No data found globally for the specified time window ({time_window})"}
@@ -235,9 +236,10 @@ async def calculate_risk_index():
     try:
         from models.model_loader import get_ann_model, get_ann_scaler
         
-        # Load exactly 1 month of historic feed to act as real-time global benchmark base
+        # Load 1 week of data instead of a month for ULTRA FAST risk index calculation
+        # 1 week provides enough activity clusters without processing 10,000+ events
         loader = DualSourceDataLoader()
-        df = await loader.load_combined_data("month")
+        df = await loader.load_combined_data("week")
         
         if len(df) == 0:
             return {"error": "No recent global data to compute risk indexes over"}

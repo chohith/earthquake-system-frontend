@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import pandas as pd
 import numpy as np
@@ -5,94 +6,100 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 import re
+import json
+from bs4 import BeautifulSoup
 from collections import defaultdict
 import os
 
 logger = logging.getLogger(__name__)
 
+# Global state for caching and connection pooling
 _DATA_CACHE = {}
-_CACHE_TIMEOUT_MINS = 3
+_CACHE_TIMEOUT_MINS = 5
+_SESSION: Optional[aiohttp.ClientSession] = None
 
-INDIAN_STATES = [
-    "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", 
-    "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli", "Daman and Diu", "Delhi", 
-    "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", 
-    "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", 
-    "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", 
-    "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", 
-    "Uttarakhand", "West Bengal"
-]
+async def get_session():
+    """Get or create a persistent aiohttp session with a pool and timeout"""
+    global _SESSION
+    if _SESSION is None or _SESSION.closed:
+        # Strict timeout to prevent hanging on slow sources like RISEQ
+        timeout = aiohttp.ClientTimeout(total=10, connect=5, sock_read=8)
+        # Use a connector with a decent pool size
+        connector = aiohttp.TCPConnector(limit=20, ttl_dns_cache=300)
+        _SESSION = aiohttp.ClientSession(timeout=timeout, connector=connector)
+    return _SESSION
 
 def extract_indian_state(place: str) -> str:
-    """Helper to extract Indian state from a place string."""
-    place_upper = place.upper()
+    """Helper to extract Indian state from place string"""
+    INDIAN_STATES = [
+        "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", 
+        "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli", "Daman and Diu", "Delhi", "Goa", 
+        "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", "Karnataka", 
+        "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", 
+        "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", 
+        "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
+    ]
+    p_upper = place.upper()
     for state in INDIAN_STATES:
-        if state.upper() in place_upper:
+        if state.upper() in p_upper:
             return f"{state}, India"
-    return place # Fallback to original if no state matched
+    return place
 
 class DualSourceDataLoader:
-    """Loads earthquake data from USGS and RISEQ sources"""
+    """Handles high-performance earthquake data fetching from USGS and RISEQ"""
     
-    def __init__(self, 
-                 usgs_base_url: str = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/",
-                 riseq_url: str = "https://riseq.seismo.gov.in/riseq/earthquake"):
-        self.usgs_base_url = usgs_base_url
-        self.riseq_url = riseq_url
+    def __init__(self):
+        self.usgs_base_url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/"
         self.usgs_endpoints = {
             'hour': 'all_hour.geojson',
             'day': 'all_day.geojson',
             'week': 'all_week.geojson',
-            'month': 'all_month.geojson',
+            'month': 'all_month.geojson'
         }
-    
+
     async def fetch_usgs_data(self, endpoint: str = 'month') -> List[Dict]:
         """Fetch earthquake data from USGS API"""
+        url = f"{self.usgs_base_url}{self.usgs_endpoints.get(endpoint, 'all_month.geojson')}"
         try:
-            url = self.usgs_base_url + self.usgs_endpoints.get(endpoint, 'all_month.geojson')
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        earthquakes = []
-                        for feature in data.get('features', []):
-                            coords = feature['geometry']['coordinates']
-                            props = feature['properties']
-                            earthquakes.append({
-                                'source': 'usgs',
-                                'id': props.get('code'),
-                                'magnitude': float(props.get('mag') or 0),
-                                'latitude': float(coords[1]),
-                                'longitude': float(coords[0]),
-                                'depth': float(coords[2] if len(coords) > 2 and coords[2] is not None else 0),
-                                'place': props.get('place', 'Unknown'),
-                                'time': datetime.fromtimestamp(props['time'] / 1000),
-                                'timestamp': props['time'],
-                            })
-                        logger.info(f"Fetched {len(earthquakes)} events from USGS")
-                        return earthquakes
+            session = await get_session()
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    events = []
+                    for f in data.get('features', []):
+                        props = f.get('properties', {})
+                        geom = f.get('geometry', {}).get('coordinates', [0, 0, 0])
+                        events.append({
+                            'source': 'usgs',
+                            'id': f.get('id'),
+                            'magnitude': float(props.get('mag') or 0),
+                            'latitude': float(geom[1]),
+                            'longitude': float(geom[0]),
+                            'depth': float(geom[2] if len(geom) > 2 and geom[2] is not None else 0),
+                            'place': props.get('place', 'Unknown'),
+                            'time': datetime.fromtimestamp(props.get('time', 0) / 1000),
+                            'timestamp': props.get('time')
+                        })
+                    return events
+                logger.error(f"USGS API error: {response.status}")
+                return []
         except Exception as e:
             logger.error(f"Error fetching USGS data: {e}")
-        return []
-    
+            return []
+
     async def fetch_riseq_data(self) -> List[Dict]:
-        """Fetch earthquake data from RISEQ API (HTML fallback parsing)"""
+        """Fetch earthquake data from RISEQ API (HTML scraping)"""
         try:
-            import json
-            import re
-            from bs4 import BeautifulSoup
-            import aiohttp
-            from datetime import timedelta
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get("https://riseq.seismo.gov.in/riseq/earthquake", headers={"User-Agent": "Mozilla/5.0"}) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
-                        earthquakes = []
-                        for li in soup.find_all('li', class_='event_list'):
-                            data_json = li.get('data-json')
-                            if data_json:
+            session = await get_session()
+            async with session.get("https://riseq.seismo.gov.in/riseq/earthquake", headers={"User-Agent": "Mozilla/5.0"}) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'lxml') # Optimized parser
+                    earthquakes = []
+                    for li in soup.find_all('li', class_='event_list'):
+                        data_json = li.get('data-json')
+                        if data_json:
+                            try:
                                 data = json.loads(data_json)
                                 lat_long = data.get('lat_long', '')
                                 coords = [float(x.strip()) for x in lat_long.split(',')] if lat_long else [0, 0]
@@ -112,167 +119,113 @@ class DualSourceDataLoader:
                                     'source': 'riseq',
                                     'id': data.get('event_id', ''),
                                     'magnitude': mag,
-                                    'latitude': float(coords[0]),
-                                    'longitude': float(coords[1]),
+                                    'latitude': coords[0],
+                                    'longitude': coords[1],
                                     'depth': depth,
-                                    'place': data.get('event_name', 'Unknown').split('-')[-1].strip(),
+                                    'place': data.get('event_name', 'India Region'),
                                     'time': utc_time,
                                     'timestamp': int(utc_time.timestamp() * 1000)
                                 })
-                        logger.info(f"Fetched {len(earthquakes)} events from RISEQ")
-                        return earthquakes
+                            except Exception as parse_e:
+                                continue
+                    return earthquakes
+                return []
         except Exception as e:
             logger.error(f"Error fetching RISEQ data: {e}")
-        return []
-    
-    @staticmethod
-    def deduplicate_events(usgs_events: List[Dict], riseq_events: List[Dict], 
-                          lat_tolerance: float = 0.1, 
-                          lon_tolerance: float = 0.1,
-                          mag_tolerance: float = 0.1,
-                          time_tolerance_minutes: int = 30) -> List[Dict]:
-        """Remove duplicate events from both sources"""
-        deduped = []
-        seen_dict = defaultdict(list)
+            return []
+
+    def deduplicate_events(self, usgs_events: List[Dict], riseq_events: List[Dict], 
+                         lat_tolerance=0.1, lon_tolerance=0.1, mag_tolerance=0.1) -> pd.DataFrame:
+        """Merge and deduplicate events from both sources using spatial hashing"""
+        if not usgs_events and not riseq_events:
+            return pd.DataFrame()
+            
+        all_events = usgs_events + riseq_events
+        if not all_events: return pd.DataFrame()
         
-        for event in usgs_events + riseq_events:
-            # Create hash key based on location and magnitude
+        seen_keys = {}
+        unique_events = []
+        
+        # Sort by time to keep most recent or first reported
+        all_events.sort(key=lambda x: x['time'], reverse=True)
+        
+        for event in all_events:
+            # Spatial + Magnitude hash key
             key = (
-                round(event['latitude'] / lat_tolerance) * lat_tolerance,
-                round(event['longitude'] / lon_tolerance) * lon_tolerance,
-                round(event['magnitude'] / mag_tolerance) * mag_tolerance
+                round(event['latitude'] / lat_tolerance),
+                round(event['longitude'] / lon_tolerance),
+                round(event['magnitude'] / mag_tolerance)
             )
             
-            # Check if similar event already exists (time-based check) using O(1) key lookup
-            is_duplicate = False
-            if key in seen_dict:
-                for seen_time, seen_sources in seen_dict[key]:
-                    time_diff = abs((event['time'] - seen_time).total_seconds() / 60)
-                    if time_diff < time_tolerance_minutes:
-                        is_duplicate = True
-                        # Track that this event has both sources
-                        if event['source'] not in seen_sources:
-                            seen_sources.add(event['source'])
-                        break
+            # Simple temporal check (30 min window)
+            if key in seen_keys:
+                existing_time = seen_keys[key]
+                if abs((event['time'] - existing_time).total_seconds()) < 1800:
+                    continue
             
-            if not is_duplicate:
-                seen_sources = {event['source']}
-                seen_dict[key].append((event['time'], seen_sources))
-                deduped.append(event)
-        
-        return deduped
-    
+            seen_keys[key] = event['time']
+            unique_events.append(event)
+            
+        return pd.DataFrame(unique_events)
+
     async def load_combined_data(self, endpoint: str = 'month') -> pd.DataFrame:
-        """Load and combine data from both USGS and RISEQ, with caching"""
+        """Load and combine data with parallel fetching and caching"""
         global _DATA_CACHE, _CACHE_TIMEOUT_MINS
         now = datetime.now()
         
-        # Check cache first
         if endpoint in _DATA_CACHE:
             cached_time, cached_df = _DATA_CACHE[endpoint]
             if (now - cached_time) < timedelta(minutes=_CACHE_TIMEOUT_MINS):
-                logger.info(f"Using cached combined data for {endpoint} ({len(cached_df)} events)")
                 return cached_df
 
-        usgs_data = await self.fetch_usgs_data(endpoint)
-        riseq_data = await self.fetch_riseq_data()
+        # Parallel fetch for ultra-speed
+        usgs_task = self.fetch_usgs_data(endpoint)
+        riseq_task = self.fetch_riseq_data()
         
-        # Deduplicate
-        combined = self.deduplicate_events(usgs_data, riseq_data)
+        usgs_data, riseq_data = await asyncio.gather(usgs_task, riseq_task)
+        df = self.deduplicate_events(usgs_data, riseq_data)
         
-        # Convert to DataFrame
-        df = pd.DataFrame(combined)
-        
-        if len(df) > 0:
-            # Time filter based on endpoint duration
-            now = datetime.utcnow()
-            time_thresholds = {
-                'hour': timedelta(hours=1),
-                'day': timedelta(days=1),
-                'week': timedelta(days=7),
-                'month': timedelta(days=30)
-            }
-            if endpoint in time_thresholds:
-                threshold_time = now - time_thresholds[endpoint]
-                df = df[df['time'] >= threshold_time]
-
-            def process_row(row):
-                place = str(row.get('place', ''))
-                source = str(row.get('source', ''))
-                lat = float(row.get('latitude', 0))
-                lon = float(row.get('longitude', 0))
-                
-                # Check for Indian context
-                is_in_india_bounds = (6 <= lat <= 38) and (68 <= lon <= 98)
-                is_india_by_name = 'INDIA' in place.upper() and not re.search(r'Mid|Ridge|Ocean|Indiana', place, re.I)
-                
-                if source == 'riseq' or (is_india_by_name and is_in_india_bounds):
-                    # It's an Indian event - map to state
-                    row['place'] = extract_indian_state(place)
-                    
-                return row
-
-            rows_processed = [process_row(r.to_dict()) for _, r in df.iterrows()]
-            df = pd.DataFrame(rows_processed)
+        if not df.empty:
+            # Optimized vectorized processing
+            # 6 <= lat <= 38 and 68 <= lon <= 98 is India bounding box
+            is_in_india = (df['latitude'] >= 6) & (df['latitude'] <= 38) & \
+                         (df['longitude'] >= 68) & (df['longitude'] <= 98)
+                         
+            is_india_name = df['place'].str.contains('INDIA', case=False, na=False) & \
+                           ~df['place'].str.contains('Mid|Ridge|Ocean|Indiana', case=False, na=False)
             
-            if not df.empty:
-                df = df.sort_values('time', ascending=False)
-                logger.info(f"Combined dataset: {len(df)} unique events from both sources after noise filtering")
-            else:
-                logger.warning("All events filtered out as noise!")
+            india_mask = (df['source'] == 'riseq') | (is_india_name & is_in_india)
             
-        # Store in cache
-        _DATA_CACHE[endpoint] = (now, df)
-        
+            if india_mask.any():
+                df.loc[india_mask, 'place'] = df.loc[india_mask, 'place'].apply(extract_indian_state)
+            
+            df = df.sort_values('time', ascending=False)
+            _DATA_CACHE[endpoint] = (now, df)
+            
         return df
-    
-    @staticmethod
-    def create_features(df: pd.DataFrame, window_size: int = 10) -> pd.DataFrame:
-        """Create features for ML models"""
-        df = df.sort_values('time')
-        features = []
-        
-        for i in range(len(df) - window_size):
-            window = df.iloc[i:i+window_size]
-            
-            feature_dict = {
-                'magnitude_current': window.iloc[-1]['magnitude'],
-                'magnitude_max_window': window['magnitude'].max(),
-                'magnitude_mean_window': window['magnitude'].mean(),
-                'magnitude_std_window': window['magnitude'].std() if pd.notna(window['magnitude'].std()) else 0,
-                'depth_current': window.iloc[-1]['depth'],
-                'depth_mean_window': window['depth'].mean(),
-                'lat_current': window.iloc[-1]['latitude'],
-                'lon_current': window.iloc[-1]['longitude'],
-                'event_count_window': len(window),
-                'source_usgs': (window['source'] == 'usgs').sum(),
-                'source_riseq': (window['source'] == 'riseq').sum(),
-                'hours_since_last': ((window.iloc[-1]['time'] - window.iloc[-2]['time']).total_seconds() / 3600) if len(window) > 1 else 0,
-                'target_magnitude_next': df.iloc[i+window_size]['magnitude'] if i+window_size < len(df) else 0,
-            }
-            features.append(feature_dict)
-        
-        return pd.DataFrame(features)
-
 
 async def get_live_earthquake_data(limit: int = 100) -> Dict:
-    """Fetch latest earthquake data from both sources for live display"""
+    """High-level wrapper for live data display"""
     loader = DualSourceDataLoader()
     df = await loader.load_combined_data('day')
     
-    if len(df) > 0:
-        return {
-            'total_events': len(df),
-            'events': df.head(limit).to_dict('records'),
-            'stats': {
-                'max_magnitude': float(df['magnitude'].max()),
-                'avg_magnitude': float(df['magnitude'].mean()),
-                'max_depth': float(df['depth'].max()),
-                'avg_depth': float(df['depth'].mean()),
-                'usgs_count': len(df[df['source'] == 'usgs']),
-                'riseq_count': len(df[df['source'] == 'riseq']),
-            },
-            'timestamp': datetime.utcnow().isoformat()
-        }
+    if df.empty:
+        return {"total_events": 0, "events": [], "stats": {}, "timestamp": datetime.now().isoformat()}
+        
+    events = df.head(limit).to_dict('records')
+    # Use pandas vectorization for stats
+    stats = {
+        "max_magnitude": float(df['magnitude'].max()),
+        "avg_magnitude": float(df['magnitude'].mean()),
+        "max_depth": float(df['depth'].max()),
+        "avg_depth": float(df['depth'].mean()),
+        "usgs_count": int(len(df[df['source'] == 'usgs'])),
+        "riseq_count": int(len(df[df['source'] == 'riseq']))
+    }
     
-    return {'total_events': 0, 'events': [], 'timestamp': datetime.utcnow().isoformat()}
+    return {
+        "total_events": len(df),
+        "events": events,
+        "stats": stats,
+        "timestamp": datetime.now().isoformat()
+    }
