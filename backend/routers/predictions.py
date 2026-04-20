@@ -259,7 +259,7 @@ async def calculate_risk_index():
             is_india_by_name = 'INDIA' in place.upper() and not any(x in place.upper() for x in ['MID', 'RIDGE', 'OCEAN', 'INDIANA', 'NEVADA'])
             is_in_india_bounds = (6 <= lat <= 38) and (68 <= lon <= 98)
             
-            if source == 'riseq' or (is_india_by_name and is_in_india_bounds):
+            if source == 'riseq' or (is_in_india_bounds and not any(x in place.upper() for x in ['MID', 'RIDGE', 'OCEAN', 'INDIANA', 'NEVADA'])) or is_india_by_name:
                 return extract_indian_state(place)
                 
             # Remove "Mid Indian Ridge" and similar oceanic ridge noise
@@ -277,14 +277,18 @@ async def calculate_risk_index():
             'magnitude': ['mean', 'max', 'count'],
             'depth': 'mean',
             'latitude': 'first',
-            'longitude': 'first'
+            'longitude': 'first',
+            'time': 'max'
         }).reset_index()
         
-        grouped.columns = ['place', 'mag_mean', 'mag_max', 'event_count', 'depth_mean', 'lat', 'lon']
+        grouped.columns = ['place', 'mag_mean', 'mag_max', 'event_count', 'depth_mean', 'lat', 'lon', 'last_time']
         # Filter regions with at least 5 meaningful quakes to ensure they are active clusters
         # Exclude the noise category explicitly
+        # Filter regions with meaningful activity
+        # Reduction: Lower threshold to 1 event to ensure even single significant events show up
+        # Special priority for India
         active_regions = grouped[
-            (grouped['event_count'] >= 5) & 
+            ((grouped['event_count'] >= 2) | (grouped['place'].str.contains('India', case=False))) & 
             (grouped['place'] != 'Other/Noise (Filtered)')
         ].sort_values(by='mag_max', ascending=False)
         
@@ -333,6 +337,7 @@ async def calculate_risk_index():
                     "event_count": int(row['event_count']),
                     "max_magnitude": round(float(row['mag_max']), 2),
                     "mean_depth": round(float(row['depth_mean']), 2),
+                    "last_event_time": row['last_time'].isoformat() if hasattr(row['last_time'], 'isoformat') else str(row['last_time']),
                     "trend": "Up" if forecast_trend == "Increasing" else ("Down" if forecast_trend == "Decreasing" else "Flat")
                 }
             })

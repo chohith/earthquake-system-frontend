@@ -67,9 +67,9 @@ export function DataLabHistory() {
         if (isPlaying) {
             timer = setInterval(() => {
                 setPlaybackYear((prev) => {
-                    if (prev >= 2025) {
+                    if (prev >= 2026) {
                         setIsPlaying(false)
-                        return 2025
+                        return 2026
                     }
                     return prev + 1
                 })
@@ -130,7 +130,7 @@ export function DataLabHistory() {
                 <CardHeader className="border-b border-slate-800">
                     <div className="flex items-center gap-2">
                         <Clock className="w-5 h-5 text-indigo-400" />
-                        <CardTitle className="text-white">2015-2025 Historical Time-Lapse</CardTitle>
+                        <CardTitle className="text-white">2015-2026 Historical Time-Lapse</CardTitle>
                     </div>
                     <CardDescription>
                         Explore a massive dataset of every global Magnitude 6.0+ earthquake over the last decade.
@@ -195,7 +195,7 @@ export function DataLabHistory() {
                                 <Slider
                                     value={[playbackYear]}
                                     min={2015}
-                                    max={2025}
+                                    max={2026}
                                     step={1}
                                     onValueChange={(vals) => {
                                         setPlaybackYear(vals[0])

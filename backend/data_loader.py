@@ -3,7 +3,7 @@ import aiohttp
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import re
 import json
@@ -77,7 +77,7 @@ class DualSourceDataLoader:
                             'longitude': float(geom[0]),
                             'depth': float(geom[2] if len(geom) > 2 and geom[2] is not None else 0),
                             'place': props.get('place', 'Unknown'),
-                            'time': datetime.fromtimestamp(props.get('time', 0) / 1000),
+                            'time': datetime.fromtimestamp(props.get('time', 0) / 1000, tz=timezone.utc),
                             'timestamp': props.get('time')
                         })
                     return events
@@ -110,10 +110,10 @@ class DualSourceDataLoader:
                                 
                                 date_str = data.get('origin_time', '').replace(' IST', '')
                                 try:
-                                    local_time = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-                                    utc_time = local_time - timedelta(hours=5, minutes=30)
+                                    local_time = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=None)
+                                    utc_time = (local_time - timedelta(hours=5, minutes=30)).replace(tzinfo=timezone.utc)
                                 except:
-                                    utc_time = datetime.utcnow()
+                                    utc_time = datetime.now(timezone.utc)
                                     
                                 earthquakes.append({
                                     'source': 'riseq',
@@ -194,7 +194,7 @@ class DualSourceDataLoader:
             is_india_name = df['place'].str.contains('INDIA', case=False, na=False) & \
                            ~df['place'].str.contains('Mid|Ridge|Ocean|Indiana', case=False, na=False)
             
-            india_mask = (df['source'] == 'riseq') | (is_india_name & is_in_india)
+            india_mask = (df['source'] == 'riseq') | (is_in_india & ~df['place'].str.contains('Mid|Ridge|Ocean|Indiana', case=False, na=False)) | is_india_name
             
             if india_mask.any():
                 df.loc[india_mask, 'place'] = df.loc[india_mask, 'place'].apply(extract_indian_state)

@@ -184,7 +184,7 @@ export function RealtimeRiskIndex({ selectedRegion, onRegionSelect }: RealtimeRi
 
   useEffect(() => {
     fetchRealTimeData()
-    const interval = setInterval(fetchRealTimeData, 5 * 60 * 1000)
+    const interval = setInterval(fetchRealTimeData, 60 * 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -202,7 +202,7 @@ export function RealtimeRiskIndex({ selectedRegion, onRegionSelect }: RealtimeRi
             lng: zone.coordinates?.lon || 0,
             riskIndex: zone.risk_index,
             recentEvents: zone.analytics?.event_count || 0,
-            lastEvent: new Date().toISOString(),
+            lastEvent: zone.analytics?.last_event_time || new Date().toISOString(),
             probability: Math.min(zone.risk_index + 10, 95), // mock probability loosely based on risk
             magnitude: [3.0, zone.analytics?.max_magnitude || 0] as [number, number],
             trend: zone.seven_day_forecast?.toLowerCase() || "stable",
