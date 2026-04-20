@@ -23,7 +23,9 @@ async def get_historical_timeline(duration: str = "month"):
             return _historical_cache
             
         try:
-            current_date = datetime.now().strftime("%Y-%m-%d")
+            now = datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            start_year = (now.year - 10) if duration == "decade" else (now.year - 1)
             url = f"https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime={start_year}-01-01&endtime={current_date}&minmagnitude=6.0"
             
             response = requests.get(url, timeout=10)

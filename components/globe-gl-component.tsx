@@ -119,7 +119,7 @@ export function GlobeGLComponent({ earthquakes, showIndiaLayer = true, searchReg
         
         // India Saffron Ripple Rings Layer
         if (showIndiaLayer) {
-           const indianQuakes = earthquakes.filter(q => q.source === 'riseq');
+           const indianQuakes = earthquakes.filter(q => q.source === 'riseq' || (q.place && q.place.toLowerCase().includes('india')));
            const ringsData = indianQuakes.map(quake => ({
              lat: quake.lat,
              lng: quake.lng,

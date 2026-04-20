@@ -198,6 +198,9 @@ class DualSourceDataLoader:
             
             if india_mask.any():
                 df.loc[india_mask, 'place'] = df.loc[india_mask, 'place'].apply(extract_indian_state)
+                # Force append 'India' if not already present
+                df.loc[india_mask, 'place'] = df.loc[india_mask, 'place'].apply(lambda x: x if 'INDIA' in x.upper() else f"{x}, India")
+                df.loc[india_mask, 'region'] = 'India'
             
             df = df.sort_values('time', ascending=False)
             _DATA_CACHE[endpoint] = (now, df)
