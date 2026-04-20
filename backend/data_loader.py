@@ -94,9 +94,14 @@ class DualSourceDataLoader:
             async with session.get("https://riseq.seismo.gov.in/riseq/earthquake", headers={"User-Agent": "Mozilla/5.0"}) as response:
                 if response.status == 200:
                     html = await response.text()
-                    soup = BeautifulSoup(html, 'lxml') # Optimized parser
+                    # Use built-in html.parser as lxml might not be available in all environments
+                    soup = BeautifulSoup(html, 'html.parser')
                     earthquakes = []
-                    for li in soup.find_all('li', class_='event_list'):
+                    
+                    items = soup.find_all('li', class_='event_list')
+                    logger.info(f"RISEQ Scraper: Found {len(items)} list items")
+                    
+                    for li in items:
                         data_json = li.get('data-json')
                         if data_json:
                             try:
@@ -114,6 +119,10 @@ class DualSourceDataLoader:
                                     utc_time = (local_time - timedelta(hours=5, minutes=30)).replace(tzinfo=timezone.utc)
                                 except:
                                     utc_time = datetime.now(timezone.utc)
+                                
+                                # Clean place name (remove "M: 5.2 - " prefix)
+                                raw_place = data.get('event_name', 'India Region')
+                                clean_place = raw_place.split(' - ')[-1].strip() if ' - ' in raw_place else raw_place
                                     
                                 earthquakes.append({
                                     'source': 'riseq',
@@ -122,13 +131,17 @@ class DualSourceDataLoader:
                                     'latitude': coords[0],
                                     'longitude': coords[1],
                                     'depth': depth,
-                                    'place': data.get('event_name', 'India Region'),
+                                    'place': clean_place,
                                     'time': utc_time,
                                     'timestamp': int(utc_time.timestamp() * 1000)
                                 })
                             except Exception as parse_e:
+                                logger.error(f"RISEQ Parse Error: {parse_e}")
                                 continue
+                    
+                    logger.info(f"RISEQ Scraper: Successfully parsed {len(earthquakes)} earthquakes")
                     return earthquakes
+                logger.warning(f"RISEQ Fetch Failed: HTTP {response.status}")
                 return []
         except Exception as e:
             logger.error(f"Error fetching RISEQ data: {e}")
@@ -171,7 +184,7 @@ class DualSourceDataLoader:
     async def load_combined_data(self, endpoint: str = 'month') -> pd.DataFrame:
         """Load and combine data with parallel fetching and caching"""
         global _DATA_CACHE, _CACHE_TIMEOUT_MINS
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         
         if endpoint in _DATA_CACHE:
             cached_time, cached_df = _DATA_CACHE[endpoint]
@@ -202,6 +215,18 @@ class DualSourceDataLoader:
                 df.loc[india_mask, 'place'] = df.loc[india_mask, 'place'].apply(lambda x: x if 'INDIA' in x.upper() else f"{x}, India")
                 df.loc[india_mask, 'region'] = 'India'
             
+            # Strict time filtering based on requested duration
+            cutoff = None
+            if endpoint == 'hour': cutoff = now - timedelta(hours=1)
+            elif endpoint == 'day': cutoff = now - timedelta(days=1)
+            elif endpoint == 'week': cutoff = now - timedelta(weeks=1)
+            elif endpoint == 'month': cutoff = now - timedelta(days=30)
+            
+            if cutoff:
+                # Ensure cutoff is UTC-aware to match df['time']
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+                df = df[df['time'] >= cutoff]
+
             df = df.sort_values('time', ascending=False)
             _DATA_CACHE[endpoint] = (now, df)
             
