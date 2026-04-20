@@ -149,24 +149,31 @@ function aggregateByDate(events: EarthquakeEvent[]) {
 
 export async function GET() {
   try {
-    const [usgsEvents, riseqEvents] = await Promise.all([
-      fetchUSGSEarthquakeData(),
-      fetchRISEQEarthquakeData(),
-    ]);
-
-    const allEvents = [...usgsEvents, ...riseqEvents];
-    const seen = new Set<string>();
-    const deduplicated: EarthquakeEvent[] = [];
-
-    allEvents.forEach((event) => {
-      const key = `${Math.round(event.latitude * 100)}-${Math.round(event.longitude * 100)}-${Math.round(event.magnitude * 10)}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduplicated.push(event);
-      }
+    const BACKEND_URL = process.env.NEXT_PUBLIC_ML_BACKEND_URL || "https://chohith-seismic-ml-engine-live.hf.space";
+    
+    // Fetch from central backend with 'month' window to get sufficient 2026 data
+    const response = await fetch(`${BACKEND_URL}/api/data/recent?duration=month`, {
+        cache: 'no-store'
     });
 
-    const aggregatedData = aggregateByDate(deduplicated);
+    if (!response.ok) throw new Error(`Backend fetch failed: ${response.status}`);
+    const result = await response.json();
+    
+    if (!result.data) return NextResponse.json({ success: false, error: 'No data' });
+
+    // Filter and map to the specific 2026 format this API contract requires
+    const events = result.data.map((e: any) => ({
+      timestamp: new Date(e.time).toISOString(),
+      timeUTC: new Date(e.time).toUTCString(),
+      location: e.place,
+      magnitude: e.magnitude,
+      depth: e.depth,
+      latitude: e.latitude,
+      longitude: e.longitude,
+      source: e.source || 'usgs',
+    })).filter((e: any) => new Date(e.timestamp).getFullYear() === 2026);
+
+    const aggregatedData = aggregateByDate(events);
 
     return NextResponse.json({
       success: true,
@@ -176,6 +183,7 @@ export async function GET() {
       sources: ['usgs', 'riseq'],
     });
   } catch (error) {
+    console.error("[Live 2026 Proxy] Failed:", error);
     return NextResponse.json({ success: false, error: 'Failed to fetch earthquake data' }, { status: 500 });
   }
 }
